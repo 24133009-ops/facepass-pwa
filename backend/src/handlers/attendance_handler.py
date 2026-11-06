@@ -25,6 +25,10 @@ from common import ses_mailer as mailer
 s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
 PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "")
 
+def get_expected_prefix(teacher_id: str, class_id: str) -> str:
+    safe_teacher = "".join(c if c.isalnum() or c in "-_." else "_" for c in teacher_id)
+    return f"attendance/{safe_teacher}/{class_id}/"
+
 def lambda_handler(event, context):
     http = event.get("requestContext", {}).get("http", {})
     http_method = http.get("method", "")
@@ -46,10 +50,12 @@ def lambda_handler(event, context):
     class_name = class_info.get("name", "Lớp học")
 
     try:
+        expected_prefix = get_expected_prefix(teacher_id, class_id)
+
         # 1. GET Presigned POST Upload URL for Group Photo (<=5MB, image/jpeg)
         if path.endswith("/upload-url") and http_method == "GET":
             sess_uuid = str(uuid.uuid4())[:8]
-            s3_key = f"sessions/{class_id}/{sess_uuid}.jpg"
+            s3_key = f"{expected_prefix}{sess_uuid}.jpg"
             presigned_post = s3.generate_presigned_post(
                 Bucket=PHOTO_BUCKET,
                 Key=s3_key,
@@ -58,7 +64,8 @@ def lambda_handler(event, context):
                 },
                 Conditions=[
                     ["content-length-range", 1000, 5242880], # Max 5MB
-                    {"Content-Type": "image/jpeg"}
+                    {"Content-Type": "image/jpeg"},
+                    ["starts-with", "$key", expected_prefix]
                 ],
                 ExpiresIn=300
             )
@@ -76,6 +83,10 @@ def lambda_handler(event, context):
 
             if not s3_key:
                 return error("Thiếu s3Key ảnh lớp học", 400)
+
+            # Enforce S3 prefix ownership
+            if not s3_key.startswith(expected_prefix):
+                return error("Khóa ảnh s3Key không hợp lệ hoặc không thuộc phạm vi lớp học được phân quyền", 403)
 
             # Retrieve group photo bytes from S3
             try:

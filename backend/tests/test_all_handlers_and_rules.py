@@ -294,6 +294,57 @@ class TestAllHandlersAndRules(unittest.TestCase):
         self.assertTrue(has_size_constraint, "Must enforce content-length-range <= 5MB")
         self.assertTrue(has_jpeg_constraint, "Must enforce Content-Type: image/jpeg")
 
+    # =========================================================================
+    # 7. Attendance Handler: S3 Prefix Generation and Tamper Prevention
+    # =========================================================================
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    @patch("handlers.attendance_handler.s3")
+    def test_attendance_upload_url_enforces_server_prefix(self, mock_s3, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
+        mock_s3.generate_presigned_post.return_value = {"url": "https://s3.amazonaws.com", "fields": {}}
+
+        teacher_id = "teacher@example.com"
+        expected_prefix = "attendance/teacher_example.com/cls-01/"
+
+        event = {
+            "rawPath": "/api/classes/cls-01/attendance/upload-url",
+            "requestContext": {
+                "http": {"method": "GET"},
+                "authorizer": {"jwt": {"claims": {"email": teacher_id}}}
+            },
+            "pathParameters": {"classId": "cls-01"}
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 200)
+        body = json.loads(res["body"])
+        self.assertTrue(body["s3Key"].startswith(expected_prefix))
+
+        _, kwargs = mock_s3.generate_presigned_post.call_args
+        conditions = kwargs.get("Conditions", [])
+        has_prefix_condition = any(c[0] == "starts-with" and c[2] == expected_prefix for c in conditions if isinstance(c, list))
+        self.assertTrue(has_prefix_condition, "Must enforce starts-with prefix in presigned POST conditions")
+
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    def test_attendance_scan_tampered_s3_key_blocked_403(self, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
+
+        teacher_id = "teacher@example.com"
+        event = {
+            "rawPath": "/api/classes/cls-01/attendance/scan",
+            "requestContext": {
+                "http": {"method": "POST"},
+                "authorizer": {"jwt": {"claims": {"email": teacher_id}}}
+            },
+            "pathParameters": {"classId": "cls-01"},
+            "body": json.dumps({
+                "sessionId": "sess-01",
+                "s3Key": "attendance/hacker_teacher/cls-01/tampered.jpg"
+            })
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 403)
+        self.assertIn("không thuộc phạm vi", json.loads(res["body"])["error"])
+
 if __name__ == "__main__":
     unittest.main()
 
