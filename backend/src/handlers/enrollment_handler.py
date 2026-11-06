@@ -1,15 +1,18 @@
 """
 Student face enrollment handler.
-Privacy & Security Mandates:
-1. Requires explicit student consent timestamp before indexing.
-2. Validates single-face quality (brightness, sharpness).
-3. Indexes face with ExternalImageId = studentId into the class collection.
-4. PERMANENTLY DELETES raw photo from S3 right after indexing.
+Security & Privacy Mandates:
+1. Enforces teacher class ownership (403 Forbidden).
+2. Generates presigned POST with content-length-range <= 5MB and Content-Type image/jpeg.
+3. Requires explicit student consent timestamp before indexing (403 Forbidden if missing).
+4. Validates single-face quality.
+5. Indexes face into Rekognition collection.
+6. PERMANENTLY DELETES raw photo from S3 immediately after indexing.
 """
 import json
 import os
 import boto3
 from common.responses import success, error
+from common.auth import get_teacher_id, verify_class_ownership
 from common import dynamodb as db
 from common import rekognition as rek
 
@@ -26,9 +29,11 @@ def lambda_handler(event, context):
     if not class_id or not student_id:
         return error("Thiếu classId hoặc studentId", 400)
 
-    class_info = db.get_class(class_id)
-    if not class_info:
-        return error("Không tìm thấy lớp học", 404)
+    # 1. Enforce class ownership by teacher (Return 403 Forbidden if mismatched)
+    teacher_id = get_teacher_id(event)
+    is_owner, class_info = verify_class_ownership(teacher_id, class_id)
+    if not is_owner:
+        return error("Bạn không có quyền truy cập hoặc lớp học không tồn tại", 403)
 
     collection_id = class_info.get("collectionId", f"facepass-{class_id}")
     student_info = db.get_student(class_id, student_id)
@@ -36,20 +41,23 @@ def lambda_handler(event, context):
         return error("Không tìm thấy sinh viên", 404)
 
     try:
-        # 1. GET Presigned S3 Upload URL
+        # 1. GET Presigned POST Upload URL with strict constraints (<=5MB, image/jpeg)
         if http_method == "GET":
             s3_key = f"enrollments/{class_id}/{student_id}.jpg"
-            presigned_url = s3.generate_presigned_url(
-                "put_object",
-                Params={
-                    "Bucket": PHOTO_BUCKET,
-                    "Key": s3_key,
-                    "ContentType": "image/jpeg"
+            presigned_post = s3.generate_presigned_post(
+                Bucket=PHOTO_BUCKET,
+                Key=s3_key,
+                Fields={
+                    "Content-Type": "image/jpeg"
                 },
+                Conditions=[
+                    ["content-length-range", 1000, 5242880], # Max 5MB (1000 bytes - 5,242,880 bytes)
+                    {"Content-Type": "image/jpeg"}
+                ],
                 ExpiresIn=300 # Valid for 5 minutes
             )
             return success({
-                "uploadUrl": presigned_url,
+                "presignedPost": presigned_post,
                 "s3Key": s3_key
             })
 
@@ -78,7 +86,7 @@ def lambda_handler(event, context):
                 s3.delete_object(Bucket=PHOTO_BUCKET, Key=s3_key)
                 return error(err_msg, 400)
 
-            # Append new face IDs in DynamoDB
+            # Append new face IDs and record consent in DynamoDB
             existing_faces = student_info.get("faceIds", [])
             updated_face_ids = list(set(existing_faces + face_ids))
             db.update_student_face_ids(class_id, student_id, updated_face_ids)
@@ -101,4 +109,3 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error in enrollment_handler: {str(e)}")
         return error(str(e), 500)
-

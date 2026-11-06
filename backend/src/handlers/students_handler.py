@@ -3,6 +3,7 @@ import json
 import csv
 import io
 from common.responses import success, error
+from common.auth import get_teacher_id, verify_class_ownership
 from common import dynamodb as db
 from common import rekognition as rek
 
@@ -16,9 +17,11 @@ def lambda_handler(event, context):
     if not class_id:
         return error("Thiếu classId", 400)
 
-    class_info = db.get_class(class_id)
-    if not class_info:
-        return error("Không tìm thấy lớp học", 404)
+    # 1. Enforce class ownership by teacher (Return 403 Forbidden if mismatched)
+    teacher_id = get_teacher_id(event)
+    is_owner, class_info = verify_class_ownership(teacher_id, class_id)
+    if not is_owner:
+        return error("Bạn không có quyền truy cập hoặc lớp học không tồn tại", 403)
 
     collection_id = class_info.get("collectionId", f"facepass-{class_id}")
 
@@ -80,4 +83,3 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error in students_handler: {str(e)}")
         return error(str(e), 500)
-

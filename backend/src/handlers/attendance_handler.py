@@ -1,11 +1,15 @@
 """
 Attendance scan, manual review confirmation, SES email dispatch, and CSV export.
 Key Technical Implementations:
-1. Detects and crops each face using Pillow with +20% padding.
-2. SearchFacesByImage for each cropped face.
-3. Groups into Present (>=90%), Uncertain (80-90%), Absent, and Unknowns.
-4. Deduplicates by studentId.
-5. On confirm: sends SES email warnings to absent students and locks session.
+1. Enforces teacher class ownership (403 Forbidden).
+2. Generates presigned POST with content-length-range <= 5MB and Content-Type image/jpeg.
+3. Detects and crops each face using Pillow with +20% padding.
+4. SearchFacesByImage for each cropped face.
+5. Groups into Present (>=90%), Uncertain (80-90%), Absent, and Unknowns.
+6. Deduplicates by studentId.
+7. Confirmation rule: BLOCKS confirmation if any student is still in 'Uncertain' group.
+8. Anti-duplicate check: Prevents repeated email sending if emailsSentAt is already set.
+9. On confirm: sends SES email warnings to absent students and locks session.
 """
 import json
 import os
@@ -13,6 +17,7 @@ import uuid
 import boto3
 from datetime import datetime
 from common.responses import success, error
+from common.auth import get_teacher_id, verify_class_ownership
 from common import dynamodb as db
 from common import rekognition as rek
 from common import ses_mailer as mailer
@@ -31,29 +36,34 @@ def lambda_handler(event, context):
     if not class_id:
         return error("Thiếu classId", 400)
 
-    class_info = db.get_class(class_id)
-    if not class_info:
-        return error("Không tìm thấy lớp học", 404)
+    # 1. Enforce class ownership by teacher (Return 403 Forbidden if mismatched)
+    teacher_id = get_teacher_id(event)
+    is_owner, class_info = verify_class_ownership(teacher_id, class_id)
+    if not is_owner:
+        return error("Bạn không có quyền truy cập hoặc lớp học không tồn tại", 403)
 
     collection_id = class_info.get("collectionId", f"facepass-{class_id}")
     class_name = class_info.get("name", "Lớp học")
 
     try:
-        # 1. GET Presigned S3 Upload URL for Group Photo
+        # 1. GET Presigned POST Upload URL for Group Photo (<=5MB, image/jpeg)
         if path.endswith("/upload-url") and http_method == "GET":
             sess_uuid = str(uuid.uuid4())[:8]
             s3_key = f"sessions/{class_id}/{sess_uuid}.jpg"
-            presigned_url = s3.generate_presigned_url(
-                "put_object",
-                Params={
-                    "Bucket": PHOTO_BUCKET,
-                    "Key": s3_key,
-                    "ContentType": "image/jpeg"
+            presigned_post = s3.generate_presigned_post(
+                Bucket=PHOTO_BUCKET,
+                Key=s3_key,
+                Fields={
+                    "Content-Type": "image/jpeg"
                 },
+                Conditions=[
+                    ["content-length-range", 1000, 5242880], # Max 5MB
+                    {"Content-Type": "image/jpeg"}
+                ],
                 ExpiresIn=300
             )
             return success({
-                "uploadUrl": presigned_url,
+                "presignedPost": presigned_post,
                 "s3Key": s3_key,
                 "sessionId": sess_uuid
             })
@@ -174,7 +184,7 @@ def lambda_handler(event, context):
             if not session_info:
                 return error("Không tìm thấy buổi học", 404)
 
-            # Anti-duplicate check
+            # Anti-duplicate check: prevent duplicate email dispatches
             if session_info.get("status") == "confirmed" and session_info.get("emailsSentAt"):
                 return error("Buổi học này đã được xác nhận và đã gửi email cảnh báo trước đó.", 400)
 
@@ -182,6 +192,15 @@ def lambda_handler(event, context):
             confirmed_records = body.get("records", [])
             if not confirmed_records:
                 return error("Danh sách xác nhận không được để trống", 400)
+
+            # MANDATORY RULE: Must resolve all 'uncertain' students before confirming
+            uncertain_records = [r for r in confirmed_records if r.get("status") == "uncertain"]
+            if uncertain_records:
+                return error(
+                    f"Không thể xác nhận buổi học khi vẫn còn {len(uncertain_records)} sinh viên ở nhóm 'Cần xác nhận'. "
+                    "Giảng viên vui lòng phân loại hết sang 'Có mặt' hoặc 'Vắng mặt' trước khi gửi thông báo.",
+                    400
+                )
 
             # Save confirmed attendance in DynamoDB
             db.save_attendance_batch(session_id, confirmed_records)
@@ -234,4 +253,3 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error in attendance_handler: {str(e)}")
         return error(str(e), 500)
-

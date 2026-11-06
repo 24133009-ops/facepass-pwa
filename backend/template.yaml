@@ -25,8 +25,8 @@ Parameters:
     Description: Monthly budget limit in USD.
   AllowedCorsOrigin:
     Type: String
-    Default: '*'
-    Description: Allowed CORS Origin for API Gateway. Set to '*' on initial deploy, then update to CloudFront domain.
+    Default: 'https://localhost:5173'
+    Description: Allowed CORS Origin for API Gateway and S3. Set to specific CloudFront domain on production deploy. Wildcard '*' is strictly prohibited.
 
 Globals:
   Function:
@@ -44,6 +44,7 @@ Globals:
         ATTENDANCE_TABLE: !Ref AttendanceTable
         PHOTO_BUCKET: !Ref PhotoStorageBucket
         SENDER_EMAIL: !Ref SenderEmail
+        ALLOWED_ORIGIN: !Ref AllowedCorsOrigin
         GEOFENCE_RADIUS_METERS: '150'
 
 Resources:
@@ -203,7 +204,8 @@ Resources:
         CorsRules:
           - AllowedHeaders: ["*"]
             AllowedMethods: [GET, PUT, POST, HEAD]
-            AllowedOrigins: ["*"]
+            AllowedOrigins:
+              - !Ref AllowedCorsOrigin
             MaxAge: 3000
 
   # =========================================================================
