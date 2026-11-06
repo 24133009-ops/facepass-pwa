@@ -1,16 +1,29 @@
-"""Class management handler (Create class, List classes, Create Rekognition Collection)."""
+"""Class management handler (Create class, List classes, Get class details)."""
 import json
 import uuid
 from common.responses import success, error
-from common.auth import get_teacher_id
+from common.auth import get_teacher_id, verify_class_ownership
 from common import dynamodb as db
 from common import rekognition as rek
 
 def lambda_handler(event, context):
     http_method = event.get("requestContext", {}).get("http", {}).get("method", "")
+    path_params = event.get("pathParameters", {}) or {}
+    class_id = path_params.get("classId")
     teacher_id = get_teacher_id(event)
 
     try:
+        # If accessing a specific class, strictly verify ownership
+        if class_id:
+            is_owner, class_info = verify_class_ownership(teacher_id, class_id)
+            if not is_owner:
+                return error("Bạn không có quyền truy cập hoặc lớp học không tồn tại", 403)
+
+            if http_method == "GET":
+                return success({"class": class_info})
+            return error(f"Unsupported method {http_method}", 405)
+
+        # Collection operations for teacher's own classes
         if http_method == "GET":
             classes = db.get_classes_by_teacher(teacher_id)
             return success({"classes": classes})
@@ -36,4 +49,3 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error in classes_handler: {str(e)}")
         return error(str(e), 500)
-

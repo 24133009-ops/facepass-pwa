@@ -62,3 +62,4 @@ Trình duyệt trên điện thoại (Chrome trên Android hoặc Safari trên i
    ```powershell
    sam delete --stack-name facepass-pwa-prod
    ```
+

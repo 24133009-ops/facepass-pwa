@@ -4,6 +4,8 @@ import json
 from decimal import Decimal
 
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "https://localhost:5173")
+LOCAL_ORIGIN = os.environ.get("LOCAL_ORIGIN", "https://localhost:5173")
+VALID_ORIGINS = {ALLOWED_ORIGIN, LOCAL_ORIGIN, "https://localhost:5173"}
 
 class DecimalEncoder(json.JSONEncoder):
     """JSON encoder for DynamoDB Decimal types."""
@@ -14,8 +16,7 @@ class DecimalEncoder(json.JSONEncoder):
 
 def build_response(status_code: int, body: dict, request_origin: str = None) -> dict:
     origin_header = ALLOWED_ORIGIN
-    # If request origin matches allowed origin, use it
-    if request_origin and request_origin == ALLOWED_ORIGIN:
+    if request_origin and request_origin in VALID_ORIGINS:
         origin_header = request_origin
 
     return {

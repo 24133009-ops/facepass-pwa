@@ -23,10 +23,6 @@ Parameters:
     Type: Number
     Default: 5
     Description: Monthly budget limit in USD.
-  AllowedCorsOrigin:
-    Type: String
-    Default: 'https://localhost:5173'
-    Description: Allowed CORS Origin for API Gateway and S3. Set to specific CloudFront domain on production deploy. Wildcard '*' is strictly prohibited.
 
 Globals:
   Function:
@@ -44,7 +40,8 @@ Globals:
         ATTENDANCE_TABLE: !Ref AttendanceTable
         PHOTO_BUCKET: !Ref PhotoStorageBucket
         SENDER_EMAIL: !Ref SenderEmail
-        ALLOWED_ORIGIN: !Ref AllowedCorsOrigin
+        ALLOWED_ORIGIN: !Sub "https://${FrontendDistribution.DomainName}"
+        LOCAL_ORIGIN: "https://localhost:5173"
         GEOFENCE_RADIUS_METERS: '150'
 
 Resources:
@@ -94,7 +91,8 @@ Resources:
       StageName: !Ref Stage
       CorsConfiguration:
         AllowOrigins:
-          - !Ref AllowedCorsOrigin
+          - "https://localhost:5173"
+          - !Sub "https://${FrontendDistribution.DomainName}"
         AllowHeaders:
           - Authorization
           - Content-Type
@@ -205,7 +203,8 @@ Resources:
           - AllowedHeaders: ["*"]
             AllowedMethods: [GET, PUT, POST, HEAD]
             AllowedOrigins:
-              - !Ref AllowedCorsOrigin
+              - "https://localhost:5173"
+              - !Sub "https://${FrontendDistribution.DomainName}"
             MaxAge: 3000
 
   # =========================================================================
@@ -323,6 +322,12 @@ Resources:
           Properties:
             ApiId: !Ref HttpApiGateway
             Path: /api/classes
+            Method: GET
+        GetClassDetails:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}
             Method: GET
         CreateClass:
           Type: HttpApi

@@ -25,6 +25,7 @@ wheels/
 
 # AWS SAM
 .aws-sam/
+samconfig.toml
 
 # Node / Frontend
 node_modules/
@@ -35,6 +36,8 @@ build/
 dist/
 .DS_Store
 *.pem
+*.key
+*.cert
 
 # Environment files
 .env

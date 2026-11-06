@@ -1,11 +1,12 @@
 """
-Unit tests for critical system rules:
-1. Missing consent blocked (403).
-2. S3 photo permanently purged after IndexFaces.
-3. Class ownership verification (403).
-4. Anti-duplicate check (emailsSentAt).
-5. Unresolved 'Uncertain' students block confirmation (400).
-6. Presigned POST constraints (<= 5MB, image/jpeg).
+Comprehensive unit test suite verifying all Task 4-5 security and business logic rules:
+1. 403 Forbidden on ALL 4 handlers when teacher does not own the class.
+2. Missing consent is blocked (403).
+3. S3 photo is permanently purged after IndexFaces.
+4. DeleteFaces is called when a student is deleted (GDPR Right to Erasure).
+5. Confirmation is blocked (400) when any student remains in 'Uncertain' group.
+6. Anti-duplicate email dispatch prevention via emailsSentAt.
+7. Presigned POST enforces content-length-range <= 5MB and Content-Type: image/jpeg.
 """
 import unittest
 from unittest.mock import patch, MagicMock
@@ -14,9 +15,86 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-from handlers import enrollment_handler, attendance_handler
+from handlers import classes_handler, students_handler, enrollment_handler, attendance_handler
 
-class TestSystemRules(unittest.TestCase):
+class TestAllHandlersAndRules(unittest.TestCase):
+
+    # =========================================================================
+    # 1. Ownership 403 Verification on ALL 4 Handlers
+    # =========================================================================
+    @patch("handlers.classes_handler.verify_class_ownership")
+    def test_classes_handler_ownership_403(self, mock_verify):
+        mock_verify.return_value = (False, None) # Teacher does not own class
+        event = {
+            "requestContext": {"http": {"method": "GET"}},
+            "pathParameters": {"classId": "cls-unowned"}
+        }
+        res = classes_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 403)
+        self.assertIn("không có quyền", json.loads(res["body"])["error"])
+
+    @patch("handlers.students_handler.verify_class_ownership")
+    def test_students_handler_ownership_403(self, mock_verify):
+        mock_verify.return_value = (False, None)
+        event = {
+            "requestContext": {"http": {"method": "GET"}},
+            "pathParameters": {"classId": "cls-unowned"}
+        }
+        res = students_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 403)
+        self.assertIn("không có quyền", json.loads(res["body"])["error"])
+
+    @patch("handlers.enrollment_handler.verify_class_ownership")
+    def test_enrollment_handler_ownership_403(self, mock_verify):
+        mock_verify.return_value = (False, None)
+        event = {
+            "requestContext": {"http": {"method": "GET"}},
+            "pathParameters": {"classId": "cls-unowned", "studentId": "SV01"}
+        }
+        res = enrollment_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 403)
+        self.assertIn("không có quyền", json.loads(res["body"])["error"])
+
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    def test_attendance_handler_ownership_403(self, mock_verify):
+        mock_verify.return_value = (False, None)
+        event = {
+            "requestContext": {"http": {"method": "GET"}},
+            "pathParameters": {"classId": "cls-unowned"}
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 403)
+        self.assertIn("không có quyền", json.loads(res["body"])["error"])
+
+    # =========================================================================
+    # 2. GDPR Right to Erasure: DeleteFaces on Student Delete
+    # =========================================================================
+    @patch("handlers.students_handler.verify_class_ownership")
+    @patch("handlers.students_handler.db.get_student")
+    @patch("handlers.students_handler.db.delete_student")
+    @patch("handlers.students_handler.rek.delete_student_faces_from_collection")
+    def test_delete_student_calls_delete_faces_in_rekognition(self, mock_del_faces, mock_db_del, mock_get_st, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "collectionId": "facepass-cls-01"})
+        mock_get_st.return_value = {
+            "studentId": "SV01",
+            "faceIds": ["face-id-1", "face-id-2"] # Has 2 registered biometric faces
+        }
+
+        event = {
+            "requestContext": {"http": {"method": "DELETE"}},
+            "pathParameters": {"classId": "cls-01", "studentId": "SV01"}
+        }
+        res = students_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 200)
+
+        # Assert Rekognition delete_faces was called with the student's faceIds
+        mock_del_faces.assert_called_with("facepass-cls-01", ["face-id-1", "face-id-2"])
+        # Assert DynamoDB delete was called
+        mock_db_del.assert_called_with("cls-01", "SV01")
+
+    # =========================================================================
+    # 3. Missing Consent Blocked (403) & S3 Raw Photo Purged
+    # =========================================================================
     @patch("handlers.enrollment_handler.verify_class_ownership")
     @patch("handlers.enrollment_handler.db.get_student")
     def test_missing_consent_is_blocked_403(self, mock_get_st, mock_verify):
@@ -26,7 +104,7 @@ class TestSystemRules(unittest.TestCase):
         event = {
             "requestContext": {"http": {"method": "POST"}},
             "pathParameters": {"classId": "cls-01", "studentId": "SV01"},
-            "body": json.dumps({"consentAgreed": False}) # NO CONSENT
+            "body": json.dumps({"consentAgreed": False})
         }
         res = enrollment_handler.lambda_handler(event, None)
         self.assertEqual(res["statusCode"], 403)
@@ -54,19 +132,20 @@ class TestSystemRules(unittest.TestCase):
         }
         res = enrollment_handler.lambda_handler(event, None)
         self.assertEqual(res["statusCode"], 200)
-        # Verify s3.delete_object was called to purge raw image
         mock_s3.delete_object.assert_called_with(
             Bucket=os.environ.get("PHOTO_BUCKET", ""),
             Key="enrollments/cls-01/SV01.jpg"
         )
 
+    # =========================================================================
+    # 4. Confirmation Blocked If 'Uncertain' Group Not Empty (400)
+    # =========================================================================
     @patch("handlers.attendance_handler.verify_class_ownership")
     @patch("handlers.attendance_handler.db.get_session")
     def test_unresolved_uncertain_students_block_confirmation_400(self, mock_get_sess, mock_verify):
         mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
         mock_get_sess.return_value = {"classId": "cls-01", "sessionId": "sess-01", "status": "draft"}
 
-        # Attempt to confirm with a student still marked 'uncertain'
         event = {
             "rawPath": "/api/classes/cls-01/attendance/sess-01/confirm",
             "requestContext": {"http": {"method": "POST"}},
@@ -82,16 +161,18 @@ class TestSystemRules(unittest.TestCase):
         self.assertEqual(res["statusCode"], 400)
         self.assertIn("Cần xác nhận", json.loads(res["body"])["error"])
 
+    # =========================================================================
+    # 5. Anti-duplicate Email Dispatch Prevention
+    # =========================================================================
     @patch("handlers.attendance_handler.verify_class_ownership")
     @patch("handlers.attendance_handler.db.get_session")
     def test_anti_duplicate_email_dispatch_prevented(self, mock_get_sess, mock_verify):
         mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
-        # Session already confirmed and emails already sent!
         mock_get_sess.return_value = {
             "classId": "cls-01",
             "sessionId": "sess-01",
             "status": "confirmed",
-            "emailsSentAt": "2026-11-06T12:00:00Z"
+            "emailsSentAt": "2026-11-06T12:00:00Z" # Already sent!
         }
 
         event = {
@@ -104,6 +185,9 @@ class TestSystemRules(unittest.TestCase):
         self.assertEqual(res["statusCode"], 400)
         self.assertIn("đã gửi email cảnh báo trước đó", json.loads(res["body"])["error"])
 
+    # =========================================================================
+    # 6. Presigned POST Constraint Verification (<= 5MB & image/jpeg)
+    # =========================================================================
     @patch("handlers.enrollment_handler.verify_class_ownership")
     @patch("handlers.enrollment_handler.db.get_student")
     @patch("handlers.enrollment_handler.s3")
@@ -119,11 +203,9 @@ class TestSystemRules(unittest.TestCase):
         res = enrollment_handler.lambda_handler(event, None)
         self.assertEqual(res["statusCode"], 200)
 
-        # Inspect the conditions passed to generate_presigned_post
         _, kwargs = mock_s3.generate_presigned_post.call_args
         conditions = kwargs.get("Conditions", [])
         
-        # Verify max 5MB (5,242,880 bytes) and image/jpeg
         has_size_constraint = any(c[0] == "content-length-range" and c[2] == 5242880 for c in conditions if isinstance(c, list))
         has_jpeg_constraint = any(c.get("Content-Type") == "image/jpeg" for c in conditions if isinstance(c, dict))
         
@@ -132,4 +214,3 @@ class TestSystemRules(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
