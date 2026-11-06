@@ -418,13 +418,17 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref PhotoStorageBucket
         - Statement:
+            # DetectFaces operates on raw images and does not support resource-level permissions per AWS IAM specs
             - Effect: Allow
               Action:
                 - rekognition:DetectFaces
+              Resource: "*"
+            # SearchFacesByImage is strictly scoped to class-specific collections
+            - Effect: Allow
+              Action:
                 - rekognition:SearchFacesByImage
-              Resource:
-                - !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
-                - "*"
+              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+            # SES SendEmail is strictly scoped to verified sender email identity
             - Effect: Allow
               Action:
                 - ses:SendEmail
