@@ -41,7 +41,7 @@ Globals:
         PHOTO_BUCKET: !Ref PhotoStorageBucket
         SENDER_EMAIL: !Ref SenderEmail
         ALLOWED_ORIGIN: !Sub "https://${FrontendDistribution.DomainName}"
-        LOCAL_ORIGIN: "https://localhost:5173"
+        LOCAL_ORIGIN: "http://localhost:5173"
         GEOFENCE_RADIUS_METERS: '150'
 
 Resources:
@@ -91,7 +91,7 @@ Resources:
       StageName: !Ref Stage
       CorsConfiguration:
         AllowOrigins:
-          - "https://localhost:5173"
+          - "http://localhost:5173"
           - !Sub "https://${FrontendDistribution.DomainName}"
         AllowHeaders:
           - Authorization
@@ -203,7 +203,7 @@ Resources:
           - AllowedHeaders: ["*"]
             AllowedMethods: [GET, PUT, POST, HEAD]
             AllowedOrigins:
-              - "https://localhost:5173"
+              - "http://localhost:5173"
               - !Sub "https://${FrontendDistribution.DomainName}"
             MaxAge: 3000
 

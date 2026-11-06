@@ -93,8 +93,84 @@ class TestAllHandlersAndRules(unittest.TestCase):
         mock_db_del.assert_called_with("cls-01", "SV01")
 
     # =========================================================================
-    # 3. Missing Consent Blocked (403) & S3 Raw Photo Purged
+    # 3. Missing Consent Blocked (403) & S3 Raw Photo Purged in Finally
     # =========================================================================
+    @patch("handlers.enrollment_handler.verify_class_ownership")
+    @patch("handlers.enrollment_handler.db.get_student")
+    def test_tampered_s3_key_prefix_rejected_403(self, mock_get_st, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "collectionId": "facepass-cls-01"})
+        mock_get_st.return_value = {"studentId": "SV01", "fullName": "Nguyen Van A"}
+
+        event = {
+            "requestContext": {
+                "http": {"method": "POST"},
+                "authorizer": {"jwt": {"claims": {"email": "teacher1@example.com"}}}
+            },
+            "pathParameters": {"classId": "cls-01", "studentId": "SV01"},
+            "body": json.dumps({
+                "consentAgreed": True,
+                "consentAt": "2026-11-06T14:00:00Z",
+                "s3Key": "enrollments/other_teacher/other_class/SV01.jpg" # TAMPERED PREFIX!
+            })
+        }
+        res = enrollment_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 403)
+        self.assertIn("không thuộc phạm vi", json.loads(res["body"])["error"])
+
+    @patch("handlers.enrollment_handler.verify_class_ownership")
+    @patch("handlers.enrollment_handler.db.get_student")
+    @patch("handlers.enrollment_handler.rek.index_student_face")
+    @patch("handlers.enrollment_handler.s3")
+    def test_s3_photo_purged_in_finally_even_on_indexing_error(self, mock_s3, mock_index, mock_get_st, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "collectionId": "facepass-cls-01"})
+        mock_get_st.return_value = {"studentId": "SV01", "fullName": "Nguyen Van A", "faceIds": []}
+        mock_index.return_value = ([], "Ảnh quá mờ. Vui lòng chụp lại.") # Quality check rejected!
+        mock_s3.get_object.return_value = {"Body": MagicMock(read=lambda: b"fake-jpeg-bytes")}
+
+        teacher_id = "teacher@example.com"
+        expected_key = "enrollments/teacher_example.com/cls-01/SV01.jpg"
+
+        event = {
+            "requestContext": {
+                "http": {"method": "POST"},
+                "authorizer": {"jwt": {"claims": {"email": teacher_id}}}
+            },
+            "pathParameters": {"classId": "cls-01", "studentId": "SV01"},
+            "body": json.dumps({
+                "consentAgreed": True,
+                "consentAt": "2026-11-06T14:00:00Z",
+                "s3Key": expected_key
+            })
+        }
+        res = enrollment_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 400)
+        self.assertIn("Ảnh quá mờ", json.loads(res["body"])["error"])
+        # CRITICAL: Verify s3.delete_object was still called in FINALLY block!
+        mock_s3.delete_object.assert_called_with(
+            Bucket=os.environ.get("PHOTO_BUCKET", ""),
+            Key=expected_key
+        )
+
+    # =========================================================================
+    # 3b. Classes Handler: Listing Classes Only Returns Teacher's Own Classes
+    # =========================================================================
+    @patch("handlers.classes_handler.db.get_classes_by_teacher")
+    def test_classes_list_strictly_scoped_to_jwt_teacher(self, mock_get_classes):
+        mock_get_classes.return_value = [
+            {"classId": "cls-01", "name": "Class 1", "teacherId": "teacher1@example.com"}
+        ]
+        event = {
+            "requestContext": {
+                "http": {"method": "GET"},
+                "authorizer": {"jwt": {"claims": {"email": "teacher1@example.com"}}}
+            }
+        }
+        res = classes_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 200)
+        classes = json.loads(res["body"])["classes"]
+        self.assertEqual(len(classes), 1)
+        self.assertEqual(classes[0]["teacherId"], "teacher1@example.com")
+        mock_get_classes.assert_called_with("teacher1@example.com")
     @patch("handlers.enrollment_handler.verify_class_ownership")
     @patch("handlers.enrollment_handler.db.get_student")
     def test_missing_consent_is_blocked_403(self, mock_get_st, mock_verify):
@@ -121,20 +197,26 @@ class TestAllHandlersAndRules(unittest.TestCase):
         mock_index.return_value = (["face-uuid-1"], "") # success
         mock_s3.get_object.return_value = {"Body": MagicMock(read=lambda: b"fake-jpeg-bytes")}
 
+        teacher_id = "teacher@example.com"
+        expected_key = "enrollments/teacher_example.com/cls-01/SV01.jpg"
+
         event = {
-            "requestContext": {"http": {"method": "POST"}},
+            "requestContext": {
+                "http": {"method": "POST"},
+                "authorizer": {"jwt": {"claims": {"email": teacher_id}}}
+            },
             "pathParameters": {"classId": "cls-01", "studentId": "SV01"},
             "body": json.dumps({
                 "consentAgreed": True,
                 "consentAt": "2026-11-06T14:00:00Z",
-                "s3Key": "enrollments/cls-01/SV01.jpg"
+                "s3Key": expected_key
             })
         }
         res = enrollment_handler.lambda_handler(event, None)
         self.assertEqual(res["statusCode"], 200)
         mock_s3.delete_object.assert_called_with(
             Bucket=os.environ.get("PHOTO_BUCKET", ""),
-            Key="enrollments/cls-01/SV01.jpg"
+            Key=expected_key
         )
 
     # =========================================================================
@@ -214,3 +296,4 @@ class TestAllHandlersAndRules(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

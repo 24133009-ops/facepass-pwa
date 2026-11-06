@@ -3,9 +3,9 @@ import os
 import json
 from decimal import Decimal
 
-ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "https://localhost:5173")
-LOCAL_ORIGIN = os.environ.get("LOCAL_ORIGIN", "https://localhost:5173")
-VALID_ORIGINS = {ALLOWED_ORIGIN, LOCAL_ORIGIN, "https://localhost:5173"}
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "http://localhost:5173")
+LOCAL_ORIGIN = os.environ.get("LOCAL_ORIGIN", "http://localhost:5173")
+VALID_ORIGINS = {ALLOWED_ORIGIN, LOCAL_ORIGIN, "http://localhost:5173"}
 
 class DecimalEncoder(json.JSONEncoder):
     """JSON encoder for DynamoDB Decimal types."""
