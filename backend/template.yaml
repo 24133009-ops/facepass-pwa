@@ -1,0 +1,498 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  FacePass PWA - Production-grade Serverless Attendance System
+  Region: ap-southeast-1 | Runtime: Python 3.12
+  Architecture: SAM, HTTP API, Lambda, Rekognition, DynamoDB, S3, SES, Cognito, CloudFront
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment stage.
+  SenderEmail:
+    Type: String
+    Default: verified-teacher@example.com
+    Description: Verified SES sender email address used for absence warning notifications.
+  AlertNotificationEmail:
+    Type: String
+    Default: admin-alerts@example.com
+    Description: Email address to receive AWS Budgets threshold alerts (Informational only, will not stop services).
+  BudgetLimitUSD:
+    Type: Number
+    Default: 5
+    Description: Monthly budget limit in USD.
+  AllowedCorsOrigin:
+    Type: String
+    Default: '*'
+    Description: Allowed CORS Origin for API Gateway. Set to '*' on initial deploy, then update to CloudFront domain.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        STAGE: !Ref Stage
+        CLASSES_TABLE: !Ref ClassesTable
+        STUDENTS_TABLE: !Ref StudentsTable
+        SESSIONS_TABLE: !Ref SessionsTable
+        ATTENDANCE_TABLE: !Ref AttendanceTable
+        PHOTO_BUCKET: !Ref PhotoStorageBucket
+        SENDER_EMAIL: !Ref SenderEmail
+        GEOFENCE_RADIUS_METERS: '150'
+
+Resources:
+  # =========================================================================
+  # 1. AUTHENTICATION: Amazon Cognito User Pool (Admin-Created Only)
+  # =========================================================================
+  TeacherUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "facepass-teachers-${Stage}"
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true # Self sign-up disabled; only admin can create teachers
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  TeacherUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "facepass-pwa-client-${Stage}"
+      UserPoolId: !Ref TeacherUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # =========================================================================
+  # 2. HTTP API GATEWAY (Cognito JWT Authorizer & Configurable CORS)
+  # =========================================================================
+  HttpApiGateway:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedCorsOrigin
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+          - X-Amz-Date
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        MaxAge: 300
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              Audience:
+                - !Ref TeacherUserPoolClient
+              Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${TeacherUserPool}"
+
+  # =========================================================================
+  # 3. DATABASE: DynamoDB Tables (On-Demand Pay-per-Request)
+  # =========================================================================
+  ClassesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "facepass-classes-${Stage}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: classId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: classId
+          KeyType: HASH
+
+  StudentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "facepass-students-${Stage}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: classId
+          AttributeType: S
+        - AttributeName: studentId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: classId
+          KeyType: HASH
+        - AttributeName: studentId
+          KeyType: RANGE
+
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "facepass-sessions-${Stage}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: classId
+          AttributeType: S
+        - AttributeName: sessionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: classId
+          KeyType: HASH
+        - AttributeName: sessionId
+          KeyType: RANGE
+
+  AttendanceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "facepass-attendance-${Stage}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: studentId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+        - AttributeName: studentId
+          KeyType: RANGE
+
+  # =========================================================================
+  # 4. STORAGE: Private S3 Bucket (SSE-S3 & 1-Day Auto-Expiration)
+  # =========================================================================
+  PhotoStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "facepass-photos-${AWS::AccountId}-${Stage}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoDeleteTempRawPhotosAfter1Day
+            Status: Enabled
+            ExpirationInDays: 1
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ["*"]
+            AllowedMethods: [GET, PUT, POST, HEAD]
+            AllowedOrigins: ["*"]
+            MaxAge: 3000
+
+  # =========================================================================
+  # 5. FRONTEND HOSTING: Private S3 Bucket + CloudFront OAC
+  # =========================================================================
+  FrontendAppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "facepass-frontend-${AWS::AccountId}-${Stage}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "facepass-frontend-oac-${Stage}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Comment: !Sub "FacePass PWA CDN Distribution (${Stage})"
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: S3FrontendOrigin
+            DomainName: !GetAtt FrontendAppBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: S3FrontendOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendAppBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendAppBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}"
+
+  # =========================================================================
+  # 6. LAMBDA LAYER: Pillow Image Processing
+  # =========================================================================
+  PillowLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "facepass-pillow-layer-${Stage}"
+      Description: Pillow library for biometric image cropping with 20% padding
+      ContentUri: layers/pillow/
+      CompatibleRuntimes:
+        - python3.12
+    Metadata:
+      BuildMethod: python3.12
+
+  # =========================================================================
+  # 7. BACKEND API LAMBDA FUNCTIONS (Principle of Least Privilege IAM)
+  # =========================================================================
+  ClassesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.classes_handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ClassesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rekognition:CreateCollection
+                - rekognition:DeleteCollection
+                - rekognition:DescribeCollection
+              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+      Events:
+        GetClasses:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes
+            Method: GET
+        CreateClass:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes
+            Method: POST
+
+  StudentsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.students_handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StudentsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClassesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rekognition:DeleteFaces
+              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+      Events:
+        GetStudents:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/students
+            Method: GET
+        AddStudent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/students
+            Method: POST
+        DeleteStudent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/students/{studentId}
+            Method: DELETE
+
+  EnrollmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.enrollment_handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StudentsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClassesTable
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoStorageBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rekognition:IndexFaces
+                - rekognition:DetectFaces
+              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+      Events:
+        GetEnrollmentUploadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/students/{studentId}/enrollment-url
+            Method: GET
+        ProcessEnrollment:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/students/{studentId}/enroll
+            Method: POST
+
+  AttendanceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.attendance_handler.lambda_handler
+      Layers:
+        - !Ref PillowLayer
+      MemorySize: 1024 # Allocated for high-res group photo Pillow operations
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AttendanceTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref StudentsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClassesTable
+        - S3CrudPolicy:
+            BucketName: !Ref PhotoStorageBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rekognition:DetectFaces
+                - rekognition:SearchFacesByImage
+              Resource:
+                - !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+                - "*"
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SenderEmail}"
+      Events:
+        GetAttendanceUploadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/attendance/upload-url
+            Method: GET
+        ProcessAttendanceScan:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/attendance/scan
+            Method: POST
+        ConfirmAttendance:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/attendance/{sessionId}/confirm
+            Method: POST
+        ExportCsv:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/attendance/{sessionId}/export
+            Method: GET
+
+  # =========================================================================
+  # 8. COST GOVERNANCE: AWS Budgets Warning Alarm (Cap at 5 USD)
+  # =========================================================================
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub "facepass-monthly-limit-${Stage}"
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref BudgetLimitUSD
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80 # Warning triggers at $4.00 (80% of $5.00 limit)
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertNotificationEmail
+
+Outputs:
+  HttpApiUrl:
+    Description: HTTP API Gateway Endpoint Base URL
+    Value: !Sub "https://${HttpApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  UserPoolId:
+    Description: Cognito User Pool ID (Admin created teachers only)
+    Value: !Ref TeacherUserPool
+  UserPoolClientId:
+    Description: Cognito App Client ID (no secret)
+    Value: !Ref TeacherUserPoolClient
+  S3BucketName:
+    Description: Private Photo Storage S3 Bucket Name
+    Value: !Ref PhotoStorageBucket
+  CloudFrontUrl:
+    Description: CloudFront HTTPS Distribution Domain for Frontend PWA
+    Value: !Sub "https://${FrontendDistribution.DomainName}"
+  FrontendS3BucketName:
+    Description: S3 Bucket to host Frontend React PWA static assets
+    Value: !Ref FrontendAppBucket
