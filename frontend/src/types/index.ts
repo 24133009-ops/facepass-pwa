@@ -92,3 +92,16 @@ export interface AttendanceConfirmResult {
   emailsDispatched: number;
   emailsFailed: number;
 }
+
+export interface SessionHistoryItem {
+  sessionId: string;
+  classId: string;
+  className: string;
+  startedAt: string;
+  status: 'confirmed' | 'draft';
+  totalStudents: number;
+  presentCount: number;
+  absentCount: number;
+  emailsSentAt?: string | null;
+  records: AttendanceRecord[];
+}

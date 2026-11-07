@@ -7,6 +7,7 @@ export const LoginForm: React.FC = () => {
   const { login, isLoading, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const isMock = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,36 +87,38 @@ export const LoginForm: React.FC = () => {
         </Button>
       </div>
 
-      {/* Demo Credentials Section for local test and evaluator convenience */}
-      <div className="mt-8 pt-5 border-t border-slate-200">
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
-          <Sparkles className="w-4 h-4 text-amber-500" />
-          <span>Tài khoản kiểm thử nhanh (Demo Mock)</span>
-        </div>
+      {/* Demo Credentials Section: Strictly visible only in local development / Mock Mode */}
+      {isMock && (
+        <div className="mt-8 pt-5 border-t border-slate-200">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <span>Tài khoản kiểm thử nhanh (Demo Mock)</span>
+          </div>
 
-        <div className="grid grid-cols-1 gap-2.5">
-          <button
-            type="button"
-            onClick={() => handleQuickLogin('teacher@example.com', 'Teacher@123')}
-            className="w-full p-3 text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all active:scale-[0.99]"
-          >
-            <div className="text-sm font-semibold text-slate-900">1. Giảng viên chính thức (Đã đổi pass)</div>
-            <div className="text-xs text-slate-500 font-mono mt-0.5">teacher@example.com | Teacher@123</div>
-          </button>
+          <div className="grid grid-cols-1 gap-2.5">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('teacher@example.com', 'Teacher@123')}
+              className="w-full p-3 text-left bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all active:scale-[0.99]"
+            >
+              <div className="text-sm font-semibold text-slate-900">1. Giảng viên chính thức (Đã đổi pass)</div>
+              <div className="text-xs text-slate-500 font-mono mt-0.5">teacher@example.com | Teacher@123</div>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleQuickLogin('newteacher@example.com', 'TempPass@123')}
-            className="w-full p-3 text-left bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200 hover:border-amber-300 rounded-xl transition-all active:scale-[0.99]"
-          >
-            <div className="text-sm font-semibold text-amber-900 flex items-center justify-between">
-              <span>2. Giảng viên mới (Yêu cầu đổi pass)</span>
-              <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded">NEW_PASSWORD</span>
-            </div>
-            <div className="text-xs text-amber-700 font-mono mt-0.5">newteacher@example.com | TempPass@123</div>
-          </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('newteacher@example.com', 'TempPass@123')}
+              className="w-full p-3 text-left bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200 hover:border-amber-300 rounded-xl transition-all active:scale-[0.99]"
+            >
+              <div className="text-sm font-semibold text-amber-900 flex items-center justify-between">
+                <span>2. Giảng viên mới (Yêu cầu đổi pass)</span>
+                <span className="text-[10px] font-bold bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded">NEW_PASSWORD</span>
+              </div>
+              <div className="text-xs text-amber-700 font-mono mt-0.5">newteacher@example.com | TempPass@123</div>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </form>
   );
 };

@@ -216,6 +216,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               <CameraCapture
                 initialFacingMode="user"
                 guideType="portrait"
+                purpose="enrollment"
                 onCapture={handleCapturePhoto}
                 isLoading={isSubmitting}
               />

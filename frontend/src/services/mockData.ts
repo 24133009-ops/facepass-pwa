@@ -1,4 +1,4 @@
-import { ClassItem, StudentItem } from '../types';
+import { ClassItem, StudentItem, SessionHistoryItem } from '../types';
 
 export const INITIAL_CLASSES: ClassItem[] = [
   {
@@ -108,3 +108,43 @@ export const INITIAL_STUDENTS: Record<string, StudentItem[]> = {
   ]
 };
 
+export const INITIAL_SESSIONS: Record<string, SessionHistoryItem[]> = {
+  'cls-01': [
+    {
+      sessionId: 'sess-20261105-01',
+      classId: 'cls-01',
+      className: 'Điện toán đám mây - IT001',
+      startedAt: '2026-11-05T08:00:00Z',
+      status: 'confirmed',
+      totalStudents: 5,
+      presentCount: 4,
+      absentCount: 1,
+      emailsSentAt: '2026-11-05T08:15:20Z',
+      records: [
+        { studentId: '20110001', fullName: 'Nguyễn Văn An', email: 'an.nguyen2011@student.edu.vn', status: 'present', similarity: 96.4 },
+        { studentId: '20110002', fullName: 'Trần Thị Bích', email: 'bich.tran2011@student.edu.vn', status: 'present', similarity: 93.8 },
+        { studentId: '20110003', fullName: 'Lê Hoàng Cường', email: 'cuong.le2011@student.edu.vn', status: 'absent', similarity: 0 },
+        { studentId: '20110004', fullName: 'Phạm Minh Đức', email: 'duc.pham2011@student.edu.vn', status: 'present', similarity: 91.2 },
+        { studentId: '20110005', fullName: 'Đặng Thu Hà', email: 'ha.dang2011@student.edu.vn', status: 'present', similarity: 90.5 }
+      ]
+    },
+    {
+      sessionId: 'sess-20261101-01',
+      classId: 'cls-01',
+      className: 'Điện toán đám mây - IT001',
+      startedAt: '2026-11-01T08:00:00Z',
+      status: 'confirmed',
+      totalStudents: 5,
+      presentCount: 3,
+      absentCount: 2,
+      emailsSentAt: '2026-11-01T08:14:10Z',
+      records: [
+        { studentId: '20110001', fullName: 'Nguyễn Văn An', email: 'an.nguyen2011@student.edu.vn', status: 'present', similarity: 97.1 },
+        { studentId: '20110002', fullName: 'Trần Thị Bích', email: 'bich.tran2011@student.edu.vn', status: 'present', similarity: 94.6 },
+        { studentId: '20110003', fullName: 'Lê Hoàng Cường', email: 'cuong.le2011@student.edu.vn', status: 'absent', similarity: 0 },
+        { studentId: '20110004', fullName: 'Phạm Minh Đức', email: 'duc.pham2011@student.edu.vn', status: 'present', similarity: 95.0 },
+        { studentId: '20110005', fullName: 'Đặng Thu Hà', email: 'ha.dang2011@student.edu.vn', status: 'absent', similarity: 0 }
+      ]
+    }
+  ]
+};

@@ -5,16 +5,22 @@ import {
   PresignedPost,
   ScanResult,
   AttendanceRecord,
-  AttendanceConfirmResult
+  AttendanceConfirmResult,
+  SessionHistoryItem
 } from '../types';
-import { INITIAL_CLASSES, INITIAL_STUDENTS } from './mockData';
+import { INITIAL_CLASSES, INITIAL_STUDENTS, INITIAL_SESSIONS } from './mockData';
+import { generateAttendanceCsv } from '../utils/csvHelper';
 
 const IS_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const COGNITO_REGION = import.meta.env.VITE_COGNITO_REGION || 'ap-southeast-1';
+const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID || '';
 
 // In-Memory Storage for Mock Mode (Preserved across SPA transitions)
 let mockClasses: ClassItem[] = [...INITIAL_CLASSES];
 let mockStudents: Record<string, StudentItem[]> = JSON.parse(JSON.stringify(INITIAL_STUDENTS));
+let mockSessions: Record<string, SessionHistoryItem[]> = JSON.parse(JSON.stringify(INITIAL_SESSIONS));
+let lastLoginEmail = '';
 
 export interface LoginResult {
   isNewPasswordRequired?: boolean;
@@ -30,9 +36,11 @@ export const apiService = {
 
   // =========================================================================
   // AUTHENTICATION APIs
+  // Supports both Mock and direct AWS Cognito IDP in production mode
   // =========================================================================
   async login(email: string, pass: string): Promise<LoginResult> {
     const trimmedEmail = email.trim().toLowerCase();
+    lastLoginEmail = trimmedEmail;
 
     if (IS_MOCK) {
       await new Promise((r) => setTimeout(r, 250));
@@ -63,6 +71,44 @@ export const apiService = {
       };
     }
 
+    // PRODUCTION MODE: Direct AWS Cognito InitiateAuth (USER_PASSWORD_AUTH)
+    if (COGNITO_CLIENT_ID) {
+      const res = await fetch(`https://cognito-idp.${COGNITO_REGION}.amazonaws.com/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth'
+        },
+        body: JSON.stringify({
+          AuthFlow: 'USER_PASSWORD_AUTH',
+          ClientId: COGNITO_CLIENT_ID,
+          AuthParameters: {
+            USERNAME: trimmedEmail,
+            PASSWORD: pass
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Đăng nhập không thành công với tài khoản Cognito');
+      }
+
+      if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+        return {
+          isNewPasswordRequired: true,
+          tempSession: data.Session
+        };
+      }
+
+      const idToken = data.AuthenticationResult?.IdToken;
+      return {
+        token: idToken,
+        teacher: { email: trimmedEmail }
+      };
+    }
+
+    // Fallback: If custom API proxy is configured
     const res = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -103,6 +149,37 @@ export const apiService = {
           email: 'newteacher@example.com',
           name: 'GIẢNG VIÊN MỚI'
         }
+      };
+    }
+
+    // PRODUCTION MODE: Direct AWS Cognito RespondToAuthChallenge
+    if (COGNITO_CLIENT_ID) {
+      const res = await fetch(`https://cognito-idp.${COGNITO_REGION}.amazonaws.com/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.RespondToAuthChallenge'
+        },
+        body: JSON.stringify({
+          ChallengeName: 'NEW_PASSWORD_REQUIRED',
+          ClientId: COGNITO_CLIENT_ID,
+          ChallengeResponses: {
+            USERNAME: lastLoginEmail,
+            NEW_PASSWORD: newPass
+          },
+          Session: tempSession
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Cập nhật mật khẩu mới Cognito thất bại');
+      }
+
+      const idToken = data.AuthenticationResult?.IdToken;
+      return {
+        token: idToken,
+        teacher: { email: lastLoginEmail }
       };
     }
 
@@ -179,6 +256,7 @@ export const apiService = {
       };
       mockClasses = [newClass, ...mockClasses];
       mockStudents[classId] = [];
+      mockSessions[classId] = [];
       return newClass;
     }
 
@@ -476,16 +554,16 @@ export const apiService = {
     token: string,
     classId: string,
     sessionId: string,
-    s3Key: string
+    s3Key: string,
+    photoCount = 1
   ): Promise<ScanResult> {
     if (IS_MOCK) {
       await new Promise((r) => setTimeout(r, 600)); // Simulate Rekognition multi-face processing latency
       const classItem = mockClasses.find((c) => c.classId === classId);
       const allStudents = mockStudents[classId] || [];
 
-      // Realistic mock distribution:
-      // - Students with registered faces: mostly Present (>=90%), 1 student Uncertain (80-89%)
-      // - Students without registered faces: Absent
+      // Multi-photo coverage simulation:
+      // More angles give higher similarity and resolve uncertain students
       const present: AttendanceRecord[] = [];
       const uncertain: AttendanceRecord[] = [];
       const absent: AttendanceRecord[] = [];
@@ -494,8 +572,9 @@ export const apiService = {
       const notEnrolled = allStudents.filter((s) => !s.faceIds || s.faceIds.length === 0);
 
       enrolled.forEach((st, idx) => {
-        if (idx === 0 && enrolled.length > 2) {
-          // 1 student placed in Uncertain group (e.g. 84.7% similarity) to demonstrate manual review rule
+        // If single photo: student idx 0 has 84.7% similarity (uncertain)
+        // If multiple photos: additional angles boost recognition, so idx 0 reaches 93.4% (present)
+        if (photoCount === 1 && idx === 0 && enrolled.length > 2) {
           uncertain.push({
             studentId: st.studentId,
             fullName: st.fullName,
@@ -505,18 +584,17 @@ export const apiService = {
             boundingBox: { Width: 0.12, Height: 0.16, Left: 0.25, Top: 0.3 }
           });
         } else if (idx < enrolled.length - 1 || enrolled.length <= 2) {
-          // Present group (>=90%)
-          const sim = Math.round((92 + (idx * 2.3) % 7) * 10) / 10;
+          const boost = photoCount > 1 ? 2.5 : 0;
+          const sim = Math.min(98.8, Math.round((92 + ((idx * 2.3) % 7) + boost) * 10) / 10);
           present.push({
             studentId: st.studentId,
             fullName: st.fullName,
             email: st.email,
             status: 'present',
-            similarity: Math.min(sim, 98.5),
+            similarity: sim,
             boundingBox: { Width: 0.11, Height: 0.15, Left: 0.1 + idx * 0.18, Top: 0.35 }
           });
         } else {
-          // Absent
           absent.push({
             studentId: st.studentId,
             fullName: st.fullName,
@@ -592,9 +670,33 @@ export const apiService = {
     }
 
     const absentStudents = records.filter((r) => r.status === 'absent');
+    const presentStudents = records.filter((r) => r.status === 'present');
+    const classItem = mockClasses.find((c) => c.classId === classId);
 
     if (IS_MOCK) {
       await new Promise((r) => setTimeout(r, 400));
+
+      // Save confirmed session into in-memory mock history
+      const nowIso = new Date().toISOString();
+      const newSession: SessionHistoryItem = {
+        sessionId,
+        classId,
+        className: classItem?.name || 'Lớp học',
+        startedAt: nowIso,
+        status: 'confirmed',
+        totalStudents: records.length,
+        presentCount: presentStudents.length,
+        absentCount: absentStudents.length,
+        emailsSentAt: nowIso,
+        records
+      };
+
+      const existingSessions = mockSessions[classId] || [];
+      mockSessions[classId] = [
+        newSession,
+        ...existingSessions.filter((s) => s.sessionId !== sessionId)
+      ];
+
       return {
         message: `Điểm danh buổi học ${sessionId} đã được xác nhận chính thức`,
         sessionStatus: 'confirmed',
@@ -616,20 +718,46 @@ export const apiService = {
     return data;
   },
 
-  async exportAttendanceCsv(token: string, classId: string, sessionId: string): Promise<string> {
+  // =========================================================================
+  // TASK 11: ATTENDANCE HISTORY & SECURE CSV EXPORT APIs
+  // =========================================================================
+  async getClassSessions(token: string, classId: string): Promise<SessionHistoryItem[]> {
     if (IS_MOCK) {
       await new Promise((r) => setTimeout(r, 200));
+      return mockSessions[classId] || [];
+    }
+
+    // In production, fetch confirmed sessions for class
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/attendance/sessions`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.sessions || [];
+  },
+
+  async exportAttendanceCsv(token: string, classId: string, sessionId: string): Promise<string> {
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 150));
       const classItem = mockClasses.find((c) => c.classId === classId);
-      const allStudents = mockStudents[classId] || [];
-      const lines = ['MSSV,Ho va Ten,Email,Trang Thai,Do Tuong Dong,Lop,Thoi Gian'];
-      allStudents.forEach((st, idx) => {
-        const stStatus = idx % 3 === 0 ? 'absent' : 'present';
-        const sim = stStatus === 'present' ? '94.5%' : '0%';
-        lines.push(
-          `"${st.studentId}","${st.fullName}","${st.email}","${stStatus}","${sim}","${classItem?.name || classId}","${new Date().toISOString()}"`
-        );
+      const session = (mockSessions[classId] || []).find((s) => s.sessionId === sessionId);
+
+      const records = session?.records || (mockStudents[classId] || []).map((st) => ({
+        studentId: st.studentId,
+        fullName: st.fullName,
+        email: st.email,
+        status: 'present' as const,
+        similarity: 95.0
+      }));
+
+      // Generate RFC 4180 CSV with UTF-8 BOM and formula injection protection
+      return generateAttendanceCsv({
+        sessionId,
+        classId,
+        className: classItem?.name || classId,
+        sessionTime: session?.startedAt || new Date().toISOString(),
+        records
       });
-      return lines.join('\n');
     }
 
     const res = await fetch(`${API_BASE_URL}/classes/${classId}/attendance/${sessionId}/export`, {

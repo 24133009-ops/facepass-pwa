@@ -1,11 +1,12 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Camera, RefreshCw, AlertCircle, UploadCloud, FlipHorizontal } from 'lucide-react';
-import { compressImage, CompressedImageResult } from '../../utils/imageCompressor';
+import { compressImage, CompressedImageResult, ImagePurpose } from '../../utils/imageCompressor';
 import { Button } from '../common/Button';
 
 interface CameraCaptureProps {
   initialFacingMode?: 'user' | 'environment';
   guideType?: 'portrait' | 'wide';
+  purpose?: ImagePurpose;
   onCapture: (result: CompressedImageResult) => void;
   isLoading?: boolean;
 }
@@ -13,6 +14,7 @@ interface CameraCaptureProps {
 export const CameraCapture: React.FC<CameraCaptureProps> = ({
   initialFacingMode = 'user',
   guideType = 'portrait',
+  purpose = 'enrollment',
   onCapture,
   isLoading = false
 }) => {
@@ -107,8 +109,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // Compress client-side (max 1280px, JPEG 0.85)
-      const compressed = await compressImage(canvas);
+      // Compress client-side (enrollment: 1280px, attendance: 2560px, JPEG)
+      const compressed = await compressImage(canvas, purpose);
       onCapture(compressed);
     } catch {
       setCameraError('Không thể chụp ảnh từ video frame. Vui lòng thử lại hoặc chọn ảnh dự phòng.');
@@ -124,7 +126,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
     setIsProcessing(true);
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressImage(file, purpose);
       onCapture(compressed);
     } catch {
       setCameraError('Lỗi khi nén ảnh tải lên.');
