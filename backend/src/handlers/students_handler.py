@@ -2,10 +2,13 @@
 import json
 import csv
 import io
+import re
 from common.responses import success, error
 from common.auth import get_teacher_id, verify_class_ownership
 from common import dynamodb as db
 from common import rekognition as rek
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 def lambda_handler(event, context):
     http = event.get("requestContext", {}).get("http", {})
@@ -40,14 +43,29 @@ def lambda_handler(event, context):
             if csv_data:
                 reader = csv.DictReader(io.StringIO(csv_data))
                 imported = []
+                invalid_rows = []
+                row_idx = 2
                 for row in reader:
                     st_id = (row.get("studentId") or row.get("MSSV") or "").strip()
                     full_name = (row.get("fullName") or row.get("HoTen") or "").strip()
                     email = (row.get("email") or row.get("Email") or "").strip()
-                    if st_id and full_name:
+                    if not st_id or not full_name:
+                        invalid_rows.append(f"Dòng {row_idx}: Thiếu MSSV hoặc Họ tên")
+                    elif email and not EMAIL_REGEX.match(email):
+                        invalid_rows.append(f"Dòng {row_idx}: Email '{email}' không đúng định dạng")
+                    else:
                         st_item = db.save_student(class_id, st_id, full_name, email)
                         imported.append(st_item)
-                return success({"message": f"Đã nhập thành công {len(imported)} sinh viên", "imported": imported})
+                    row_idx += 1
+
+                if invalid_rows and not imported:
+                    return error(f"Nhập thất bại do lỗi định dạng: {'; '.join(invalid_rows)}", 400)
+
+                return success({
+                    "message": f"Đã nhập thành công {len(imported)} sinh viên",
+                    "imported": imported,
+                    "warnings": invalid_rows
+                })
 
             # Case B: Single Student
             st_id = body.get("studentId", "").strip()
@@ -56,6 +74,9 @@ def lambda_handler(event, context):
 
             if not st_id or not full_name:
                 return error("Vui lòng điền MSSV và họ tên sinh viên", 400)
+
+            if email and not EMAIL_REGEX.match(email):
+                return error(f"Email '{email}' không đúng định dạng chuẩn", 400)
 
             st_item = db.save_student(class_id, st_id, full_name, email)
             return success({"message": "Thêm sinh viên thành công", "student": st_item}, 201)

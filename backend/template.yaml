@@ -26,7 +26,7 @@ Parameters:
 
 Globals:
   Function:
-    Timeout: 30
+    Timeout: 25
     MemorySize: 512
     Runtime: python3.12
     Architectures:
@@ -39,7 +39,8 @@ Globals:
         SESSIONS_TABLE: !Ref SessionsTable
         ATTENDANCE_TABLE: !Ref AttendanceTable
         PHOTO_BUCKET: !Ref PhotoStorageBucket
-        SENDER_EMAIL: !Ref SenderEmail
+        GMAIL_USER_PARAM: /facepass/gmail/username
+        GMAIL_APP_PASSWORD_PARAM: /facepass/gmail/app_password
         ALLOWED_ORIGIN: !Sub "https://${FrontendDistribution.DomainName}"
         LOCAL_ORIGIN: "http://localhost:5173"
         GEOFENCE_RADIUS_METERS: '150'
@@ -306,6 +307,8 @@ Resources:
     Properties:
       CodeUri: src/
       Handler: handlers.classes_handler.lambda_handler
+      Timeout: 10
+      MemorySize: 256
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ClassesTable
@@ -341,6 +344,8 @@ Resources:
     Properties:
       CodeUri: src/
       Handler: handlers.students_handler.lambda_handler
+      Timeout: 15
+      MemorySize: 256
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref StudentsTable
@@ -376,6 +381,8 @@ Resources:
     Properties:
       CodeUri: src/
       Handler: handlers.enrollment_handler.lambda_handler
+      Timeout: 25
+      MemorySize: 1024 # Allocated for high-res photo indexing
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref StudentsTable
@@ -410,7 +417,8 @@ Resources:
       Handler: handlers.attendance_handler.lambda_handler
       Layers:
         - !Ref PillowLayer
-      MemorySize: 1024 # Allocated for high-res group photo Pillow operations
+      Timeout: 25 # Set to 25s (< 30s HTTP API hard cutoff) to avoid uncaught 503 gateway drops
+      MemorySize: 1024 # Allocated for Pillow group photo cropping & multi-face search
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SessionsTable
@@ -433,12 +441,17 @@ Resources:
               Action:
                 - rekognition:SearchFacesByImage
               Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
-            # SES SendEmail is strictly scoped to verified sender email identity
+            # Principle of Least Privilege: SSM Parameter Store access strictly for Gmail credentials
             - Effect: Allow
               Action:
-                - ses:SendEmail
-                - ses:SendRawEmail
-              Resource: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${SenderEmail}"
+                - ssm:GetParameter
+                - ssm:GetParameters
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/facepass/gmail/*"
+            # AWS KMS Decrypt access for SSM SecureString parameters
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: "*"
       Events:
         GetAttendanceUploadUrl:
           Type: HttpApi
@@ -458,6 +471,18 @@ Resources:
             ApiId: !Ref HttpApiGateway
             Path: /api/classes/{classId}/attendance/{sessionId}/confirm
             Method: POST
+        RetryAbsenceEmail:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/attendance/{sessionId}/retry-email
+            Method: POST
+        GetAttendanceSessions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /api/classes/{classId}/attendance/sessions
+            Method: GET
         ExportCsv:
           Type: HttpApi
           Properties:

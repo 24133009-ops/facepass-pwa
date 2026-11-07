@@ -88,3 +88,30 @@ Trình duyệt trên điện thoại (Chrome trên Android hoặc Safari trên i
    sam delete --stack-name facepass-pwa-prod
    ```
 
+---
+
+## 📧 5. Cấu Hình Gửi Mail Cảnh Báo Vắng Học & Lưu Ý Bắt Buộc Về Amazon SES
+
+Hệ thống FacePass PWA hỗ trợ gửi thông báo vắng học tự động tới email sinh viên sau khi Giảng viên xác nhận buổi điểm danh.
+
+### ⚠️ Lưu Ý Quan Trọng Về Amazon SES Sandbox:
+1. **Chế độ SES Sandbox (Mặc định trên tài khoản AWS mới):**
+   - **Chỉ gửi được đến các email người nhận đã được xác minh danh tính (Verified Identities)** trong AWS SES Console (hoặc qua lệnh `aws ses verify-email-identity --email-address ...`).
+   - Nếu gửi đến email sinh viên chưa được xác minh, AWS SES sẽ chặn và báo lỗi `MessageRejected` (Email address is not verified).
+   - Hạn ngạch giới hạn: tối đa 200 emails / 24 giờ, tốc độ gửi tối đa 1 email / giây.
+
+2. **🚫 TUYỆT ĐỐI KHÔNG dùng địa chỉ `@gmail.com` làm địa chỉ người gửi (`From` / `SENDER_EMAIL`) qua SES:**
+   - Google áp dụng chính sách bảo mật **DMARC `p=reject`** và SPF nghiêm ngặt đối với domain `gmail.com`.
+   - Nếu gửi mail từ máy chủ AWS SES với header `From: tengiangvien@gmail.com`:
+     - Máy chủ mail của người nhận (Gmail, Microsoft 365, mail server trường đại học) sẽ **từ chối nhận thư (Bounce/Drop)** hoặc đánh dấu thư rác / lừa đảo (Spam/Phishing).
+     - AWS SES có thể tạm khóa tính năng gửi mail do vi phạm danh tiếng người gửi (Sender Reputation).
+   - **Quy tắc chuẩn:**
+     - Sử dụng địa chỉ thuộc tên miền riêng đã cấu hình DKIM/SPF (ví dụ: `no-reply@truong.edu.vn`), **HOẶC**
+     - Nếu muốn gửi từ địa chỉ Gmail của Giảng viên, sử dụng **Phương án C: SMTP Gmail với App Password lưu trong AWS Systems Manager (SSM) Parameter Store SecureString**.
+
+### 💡 Tổng Hợp 3 Phương Án Triển Khai Gửi Email:
+- **Phương án A: Amazon SES với Tên Miền Riêng (Custom Domain):** Cần sở hữu tên miền (domain), cấu hình bản ghi DNS (DKIM, SPF, MX), yêu cầu AWS duyệt thoát khỏi Sandbox (Production Access). Thích hợp cho trường học hoặc doanh nghiệp.
+- **Phương án B: Amazon SES Sandbox:** Miễn phí, không cần mua domain. Tuy nhiên chỉ gửi được cho các email sinh viên đã được verify thủ công trong AWS SES Console.
+- **Phương án C: SMTP Gmail với App Password lưu trong AWS SSM Parameter Store (SecureString):** Giảng viên dùng email Gmail/Google Workspace, tạo Mật khẩu ứng dụng 2FA (16 ký tự). Mật khẩu được mã hóa an toàn bằng AWS KMS trong Parameter Store. Lambda đọc thông tin qua IAM Role và gửi qua SMTP cổng 587 (TLS). Không cần tên miền riêng, không bị chặn bởi SES Sandbox.
+
+

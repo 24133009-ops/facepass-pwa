@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { UploadCloud, FileText, CheckCircle, Sparkles } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { UploadCloud, FileText, CheckCircle, Sparkles, AlertTriangle } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
+import { validateCsvContent } from '../../utils/validators';
 
 interface ImportCsvModalProps {
   isOpen: boolean;
@@ -47,14 +48,29 @@ export const ImportCsvModal: React.FC<ImportCsvModalProps> = ({
     setError(null);
   };
 
-  const lineCount = csvContent
-    .split(/\r?\n/)
-    .filter((l) => l.trim().length > 0 && !l.toLowerCase().includes('mssv')).length;
+  const validation = useMemo(() => {
+    if (!csvContent.trim()) {
+      return { totalRows: 0, validRows: [], invalidRows: [] };
+    }
+    return validateCsvContent(csvContent);
+  }, [csvContent]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!csvContent.trim()) {
       setError('Vui lòng chọn file CSV hoặc dán nội dung CSV');
+      return;
+    }
+
+    if (validation.invalidRows.length > 0) {
+      setError(
+        `Phát hiện ${validation.invalidRows.length} dòng có lỗi định dạng email hoặc thiếu thông tin. Vui lòng sửa lại trước khi nhập.`
+      );
+      return;
+    }
+
+    if (validation.validRows.length === 0) {
+      setError('Không tìm thấy dữ liệu sinh viên hợp lệ trong file CSV');
       return;
     }
 
@@ -120,10 +136,33 @@ export const ImportCsvModal: React.FC<ImportCsvModalProps> = ({
           />
         </div>
 
-        {lineCount > 0 && (
+        {validation.invalidRows.length > 0 && (
+          <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-xs text-red-800 space-y-1.5">
+            <div className="flex items-center gap-1.5 font-bold text-red-700">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>Phát hiện {validation.invalidRows.length} dòng có lỗi định dạng:</span>
+            </div>
+            <div className="max-h-28 overflow-y-auto space-y-1 font-mono text-[11px] pl-1 pr-1">
+              {validation.invalidRows.map((row) => (
+                <div key={row.rowNumber} className="bg-white/80 p-1.5 rounded border border-red-200/60">
+                  <span className="font-bold text-red-700">Dòng {row.rowNumber}:</span>{' '}
+                  <span className="text-slate-700">{row.errors.join('; ')}</span>{' '}
+                  <span className="text-slate-400">({row.studentId || 'Trống MSSV'}, {row.email || 'Trống Email'})</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-red-600 italic">
+              Vui lòng sửa các dòng trên (đặc biệt định dạng email) để đảm bảo sinh viên nhận được thông báo vắng học.
+            </p>
+          </div>
+        )}
+
+        {validation.validRows.length > 0 && validation.invalidRows.length === 0 && (
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
-            <CheckCircle className="w-4 h-4 text-emerald-600" />
-            <span>Đã nhận diện {lineCount} sinh viên trong file</span>
+            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Đã kiểm tra hợp lệ {validation.validRows.length} sinh viên (MSSV, Họ tên, Email chuẩn)
+            </span>
           </div>
         )}
 
@@ -138,8 +177,15 @@ export const ImportCsvModal: React.FC<ImportCsvModalProps> = ({
         </div>
 
         <div className="pt-2 space-y-2">
-          <Button type="submit" isLoading={isLoading} disabled={!csvContent.trim()} size="lg">
-            Xác Nhận Nhập {lineCount > 0 ? `${lineCount} Sinh Viên` : ''}
+          <Button
+            type="submit"
+            isLoading={isLoading}
+            disabled={!csvContent.trim() || validation.invalidRows.length > 0 || validation.validRows.length === 0}
+            size="lg"
+          >
+            {validation.invalidRows.length > 0
+              ? `Vui Lòng Sửa ${validation.invalidRows.length} Dòng Lỗi`
+              : `Xác Nhận Nhập ${validation.validRows.length > 0 ? `${validation.validRows.length} Sinh Viên` : ''}`}
           </Button>
           <Button type="button" variant="outline" onClick={onClose} size="lg">
             Hủy Bỏ

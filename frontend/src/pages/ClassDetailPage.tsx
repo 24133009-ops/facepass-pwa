@@ -155,7 +155,14 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
     fetchStudents();
     fetchSessions();
     setActiveTab('history');
-    showToast('Điểm danh đã được xác nhận và thông báo SES đã được gửi');
+    showToast('Điểm danh đã được xác nhận và thông báo đã gửi tới máy chủ mail');
+  };
+
+  const handleSessionUpdated = (updatedSession: SessionHistoryItem) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.sessionId === updatedSession.sessionId ? updatedSession : s))
+    );
+    setSelectedSessionDetail(updatedSession);
   };
 
   const handleExportSessionCsv = (session: SessionHistoryItem) => {
@@ -245,7 +252,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                   <span>Điểm Danh AI</span>
                 </div>
                 <p className="text-[11px] text-blue-700 leading-snug mb-3">
-                  Chụp 1 hoặc nhiều góc ảnh toàn cảnh lớp học, AI đối soát 3 nhóm & gửi SES.
+                  Chụp 1 hoặc nhiều góc ảnh toàn cảnh lớp học, AI đối soát 3 nhóm & gửi mail cảnh báo.
                 </p>
               </div>
               <Button
@@ -576,6 +583,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         session={selectedSessionDetail}
+        onSessionUpdated={handleSessionUpdated}
       />
     </div>
   );

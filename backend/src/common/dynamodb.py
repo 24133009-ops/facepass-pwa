@@ -122,8 +122,31 @@ def save_attendance_batch(session_id: str, records: List[Dict[str, Any]]):
                 "status": r.get("status", "absent"),
                 "similarity": str(r.get("similarity", 0)),
                 "confirmedBy": r.get("confirmedBy", "system"),
+                "emailStatus": r.get("emailStatus", "none" if r.get("status") == "present" else "pending"),
+                "emailError": r.get("emailError", ""),
+                "emailSentAt": r.get("emailSentAt", ""),
                 "updatedAt": datetime.now().isoformat()
             })
+
+def update_attendance_email_status(
+    session_id: str,
+    student_id: str,
+    status: str,
+    error_reason: Optional[str] = None,
+    sent_at: Optional[str] = None
+):
+    expr = "SET emailStatus = :es, emailError = :ee, emailSentAt = :esa, updatedAt = :u"
+    vals = {
+        ":es": status,
+        ":ee": error_reason or "",
+        ":esa": sent_at or "",
+        ":u": datetime.now().isoformat()
+    }
+    attendance_tbl.update_item(
+        Key={"sessionId": session_id, "studentId": student_id},
+        UpdateExpression=expr,
+        ExpressionAttributeValues=vals
+    )
 
 def get_session_attendance(session_id: str) -> List[Dict[str, Any]]:
     res = attendance_tbl.query(
@@ -131,4 +154,12 @@ def get_session_attendance(session_id: str) -> List[Dict[str, Any]]:
         ExpressionAttributeValues={":s": session_id}
     )
     return res.get("Items", [])
+
+def get_sessions_by_class(class_id: str) -> List[Dict[str, Any]]:
+    res = sessions_tbl.query(
+        KeyConditionExpression="classId = :c",
+        ExpressionAttributeValues={":c": class_id}
+    )
+    return res.get("Items", [])
+
 

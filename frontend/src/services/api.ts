@@ -676,8 +676,19 @@ export const apiService = {
     if (IS_MOCK) {
       await new Promise((r) => setTimeout(r, 400));
 
-      // Save confirmed session into in-memory mock history
+      // Save confirmed session into in-memory mock history with per-student SES status
       const nowIso = new Date().toISOString();
+      const updatedRecords: AttendanceRecord[] = records.map((r) => {
+        if (r.status === 'absent') {
+          return {
+            ...r,
+            emailStatus: 'sent',
+            emailSentAt: nowIso
+          };
+        }
+        return r;
+      });
+
       const newSession: SessionHistoryItem = {
         sessionId,
         classId,
@@ -688,7 +699,7 @@ export const apiService = {
         presentCount: presentStudents.length,
         absentCount: absentStudents.length,
         emailsSentAt: nowIso,
-        records
+        records: updatedRecords
       };
 
       const existingSessions = mockSessions[classId] || [];
@@ -715,6 +726,50 @@ export const apiService = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Lỗi xác nhận điểm danh');
+    return data;
+  },
+
+  async retryAbsenceEmail(
+    token: string,
+    classId: string,
+    sessionId: string,
+    studentId: string
+  ): Promise<{ success: boolean; emailStatus: 'sent' | 'failed'; emailError?: string; emailSentAt?: string }> {
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 400));
+      const sessions = mockSessions[classId] || [];
+      const session = sessions.find((s) => s.sessionId === sessionId);
+      if (!session) {
+        throw new Error('Không tìm thấy buổi điểm danh trong bộ nhớ');
+      }
+
+      const record = session.records.find((r) => r.studentId === studentId);
+      if (!record) {
+        throw new Error('Không tìm thấy sinh viên trong buổi điểm danh này');
+      }
+
+      const nowIso = new Date().toISOString();
+      record.emailStatus = 'sent';
+      record.emailSentAt = nowIso;
+      record.emailError = undefined;
+
+      return {
+        success: true,
+        emailStatus: 'sent',
+        emailSentAt: nowIso
+      };
+    }
+
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/attendance/${sessionId}/retry-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ studentId })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Lỗi gửi lại email cảnh báo');
     return data;
   },
 

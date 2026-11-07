@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { User, Hash, Mail } from 'lucide-react';
+import { User, Hash, Mail, AlertCircle } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
+import { isValidEmail } from '../../utils/validators';
 
 interface AddStudentModalProps {
   isOpen: boolean;
@@ -28,12 +29,18 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
       return;
     }
 
+    const finalEmail = email.trim() || `${studentId.trim().toLowerCase()}@student.edu.vn`;
+    if (!isValidEmail(finalEmail)) {
+      setError(`Email "${finalEmail}" không đúng định dạng chuẩn (VD: ten.sv@domain.edu.vn)`);
+      return;
+    }
+
     try {
       setError(null);
       await onAdd({
         studentId: studentId.trim(),
         fullName: fullName.trim(),
-        email: email.trim() || `${studentId.trim().toLowerCase()}@student.edu.vn`
+        email: finalEmail
       });
       setStudentId('');
       setFullName('');
@@ -48,8 +55,9 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
     <Modal isOpen={isOpen} onClose={onClose} title="Thêm Sinh Viên Mới">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-            {error}
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 

@@ -16,6 +16,7 @@ import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 from handlers import classes_handler, students_handler, enrollment_handler, attendance_handler
+from common import mailer
 
 class TestAllHandlersAndRules(unittest.TestCase):
 
@@ -224,9 +225,11 @@ class TestAllHandlersAndRules(unittest.TestCase):
     # =========================================================================
     @patch("handlers.attendance_handler.verify_class_ownership")
     @patch("handlers.attendance_handler.db.get_session")
-    def test_unresolved_uncertain_students_block_confirmation_400(self, mock_get_sess, mock_verify):
+    @patch("handlers.attendance_handler.db.get_students_by_class")
+    def test_unresolved_uncertain_students_block_confirmation_400(self, mock_get_st, mock_get_sess, mock_verify):
         mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
         mock_get_sess.return_value = {"classId": "cls-01", "sessionId": "sess-01", "status": "draft"}
+        mock_get_st.return_value = [{"studentId": "SV01"}, {"studentId": "SV02"}]
 
         event = {
             "rawPath": "/api/classes/cls-01/attendance/sess-01/confirm",
@@ -344,6 +347,161 @@ class TestAllHandlersAndRules(unittest.TestCase):
         res = attendance_handler.lambda_handler(event, None)
         self.assertEqual(res["statusCode"], 403)
         self.assertIn("không thuộc phạm vi", json.loads(res["body"])["error"])
+
+    @patch("handlers.students_handler.verify_class_ownership")
+    def test_students_invalid_email_rejected_400(self, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "collectionId": "facepass-cls-01"})
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "pathParameters": {"classId": "cls-01"},
+            "body": json.dumps({
+                "studentId": "SV01",
+                "fullName": "Nguyen Van A",
+                "email": "invalid-email-format"
+            })
+        }
+        res = students_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 400)
+        self.assertIn("không đúng định dạng", json.loads(res["body"])["error"])
+
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    @patch("handlers.attendance_handler.db.get_session")
+    @patch("handlers.attendance_handler.db.get_students_by_class")
+    def test_confirm_attendance_rejects_unregistered_student_id_400(self, mock_get_st, mock_get_sess, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
+        mock_get_sess.return_value = {"classId": "cls-01", "sessionId": "sess-01", "status": "draft"}
+        mock_get_st.return_value = [{"studentId": "SV01"}]
+
+        event = {
+            "rawPath": "/api/classes/cls-01/attendance/sess-01/confirm",
+            "requestContext": {"http": {"method": "POST"}},
+            "pathParameters": {"classId": "cls-01", "sessionId": "sess-01"},
+            "body": json.dumps({"records": [{"studentId": "HACKER_SV", "status": "present"}]})
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 400)
+        self.assertIn("không thuộc danh sách lớp", json.loads(res["body"])["error"])
+
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    @patch("handlers.attendance_handler.db.get_session")
+    @patch("handlers.attendance_handler.db.get_students_by_class")
+    def test_confirm_attendance_rejects_invalid_status_400(self, mock_get_st, mock_get_sess, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
+        mock_get_sess.return_value = {"classId": "cls-01", "sessionId": "sess-01", "status": "draft"}
+        mock_get_st.return_value = [{"studentId": "SV01"}]
+
+        event = {
+            "rawPath": "/api/classes/cls-01/attendance/sess-01/confirm",
+            "requestContext": {"http": {"method": "POST"}},
+            "pathParameters": {"classId": "cls-01", "sessionId": "sess-01"},
+            "body": json.dumps({"records": [{"studentId": "SV01", "status": "tampered_status"}]})
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 400)
+        self.assertIn("không hợp lệ", json.loads(res["body"])["error"])
+
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    @patch("handlers.attendance_handler.db.get_session")
+    @patch("handlers.attendance_handler.db.get_session_attendance")
+    def test_retry_email_checks_ownership_and_fails_if_already_sent_400(self, mock_get_att, mock_get_sess, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
+        mock_get_sess.return_value = {"classId": "cls-01", "sessionId": "sess-01"}
+        mock_get_att.return_value = [
+            {"studentId": "SV02", "status": "absent", "emailStatus": "sent"}
+        ]
+
+        event = {
+            "rawPath": "/api/classes/cls-01/attendance/sess-01/retry-email",
+            "requestContext": {"http": {"method": "POST"}},
+            "pathParameters": {"classId": "cls-01", "sessionId": "sess-01"},
+            "body": json.dumps({"studentId": "SV02"})
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 400)
+        self.assertIn("đã được gửi thành công trước đó", json.loads(res["body"])["error"])
+
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    @patch("handlers.attendance_handler.db.get_session")
+    @patch("handlers.attendance_handler.db.get_session_attendance")
+    def test_retry_email_fails_if_not_failed_status_400(self, mock_get_att, mock_get_sess, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
+        mock_get_sess.return_value = {"classId": "cls-01", "sessionId": "sess-01"}
+        mock_get_att.return_value = [
+            {"studentId": "SV02", "status": "absent", "emailStatus": "none"}
+        ]
+
+        event = {
+            "rawPath": "/api/classes/cls-01/attendance/sess-01/retry-email",
+            "requestContext": {"http": {"method": "POST"}},
+            "pathParameters": {"classId": "cls-01", "sessionId": "sess-01"},
+            "body": json.dumps({"studentId": "SV02"})
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 400)
+        self.assertIn("thất bại (failed)", json.loads(res["body"])["error"])
+
+    @patch("handlers.attendance_handler.verify_class_ownership")
+    @patch("handlers.attendance_handler.db.get_session")
+    @patch("handlers.attendance_handler.db.get_session_attendance")
+    @patch("handlers.attendance_handler.mailer.send_absence_warning")
+    @patch("handlers.attendance_handler.db.update_attendance_email_status")
+    def test_attendance_retry_email_success(self, mock_update, mock_send, mock_get_att, mock_get_sess, mock_verify):
+        mock_verify.return_value = (True, {"classId": "cls-01", "name": "Cloud Computing"})
+        mock_get_sess.return_value = {"classId": "cls-01", "sessionId": "sess-01"}
+        mock_get_att.return_value = [
+            {"studentId": "SV02", "fullName": "Tran Thi B", "email": "b@student.edu.vn", "status": "absent", "emailStatus": "failed"}
+        ]
+        mock_send.return_value = (True, None)
+
+        event = {
+            "rawPath": "/api/classes/cls-01/attendance/sess-01/retry-email",
+            "requestContext": {"http": {"method": "POST"}},
+            "pathParameters": {"classId": "cls-01", "sessionId": "sess-01"},
+            "body": json.dumps({"studentId": "SV02"})
+        }
+        res = attendance_handler.lambda_handler(event, None)
+        self.assertEqual(res["statusCode"], 200)
+        self.assertEqual(json.loads(res["body"])["emailStatus"], "sent")
+        mock_send.assert_called_once()
+        mock_update.assert_called_once()
+
+class TestMailerSmtpAndSsm(unittest.TestCase):
+    @patch("common.mailer.ssm")
+    def test_get_gmail_credentials_from_ssm(self, mock_ssm):
+        mailer._cached_gmail_user = None
+        mailer._cached_gmail_password = None
+        mock_ssm.get_parameters.return_value = {
+            "Parameters": [
+                {"Name": "/facepass/gmail/username", "Value": "test@gmail.com"},
+                {"Name": "/facepass/gmail/app_password", "Value": "abcd-efgh-ijkl-mnop"}
+            ]
+        }
+        user, pwd = mailer.get_gmail_credentials()
+        self.assertEqual(user, "test@gmail.com")
+        self.assertEqual(pwd, "abcd-efgh-ijkl-mnop")
+        mock_ssm.get_parameters.assert_called_once()
+
+    @patch("common.mailer.get_gmail_credentials")
+    @patch("smtplib.SMTP")
+    def test_dispatch_batch_absence_emails_reuses_connection(self, mock_smtp_cls, mock_get_creds):
+        mock_get_creds.return_value = ("test@gmail.com", "abcd-efgh-ijkl-mnop")
+        mock_smtp_inst = MagicMock()
+        mock_smtp_cls.return_value = mock_smtp_inst
+
+        absent_list = [
+            {"studentId": "SV01", "fullName": "Nguyen Van A", "email": "a@student.edu.vn"},
+            {"studentId": "SV02", "fullName": "Tran Thi B", "email": "b@student.edu.vn"}
+        ]
+
+        res = mailer.dispatch_batch_absence_emails(absent_list, "IT001", "08:00 07/11/2026")
+        self.assertEqual(res["success"], 2)
+        self.assertEqual(res["failed"], 0)
+
+        mock_smtp_cls.assert_called_once_with("smtp.gmail.com", 587, timeout=10)
+        mock_smtp_inst.starttls.assert_called_once()
+        mock_smtp_inst.login.assert_called_once_with("test@gmail.com", "abcd-efgh-ijkl-mnop")
+        self.assertEqual(mock_smtp_inst.send_message.call_count, 2)
+        mock_smtp_inst.quit.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

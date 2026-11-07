@@ -20,7 +20,7 @@ from common.responses import success, error
 from common.auth import get_teacher_id, verify_class_ownership
 from common import dynamodb as db
 from common import rekognition as rek
-from common import ses_mailer as mailer
+from common import mailer
 
 s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
 PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "")
@@ -186,7 +186,7 @@ def lambda_handler(event, context):
                 "unknowns": unknown_faces
             })
 
-        # 3. POST Confirm Attendance & Dispatch SES Emails
+        # 3. POST Confirm Attendance & Dispatch Emails via Gmail SMTP
         elif "/confirm" in path and http_method == "POST":
             if not session_id:
                 return error("Thiếu sessionId", 400)
@@ -204,6 +204,18 @@ def lambda_handler(event, context):
             if not confirmed_records:
                 return error("Danh sách xác nhận không được để trống", 400)
 
+            # Validate that all studentIds belong to this class and statuses are valid
+            valid_students = db.get_students_by_class(class_id)
+            valid_student_ids = {st["studentId"] for st in valid_students}
+
+            for r in confirmed_records:
+                st_id = r.get("studentId")
+                status = r.get("status")
+                if not st_id or st_id not in valid_student_ids:
+                    return error(f"Sinh viên MSSV '{st_id}' không thuộc danh sách lớp học này", 400)
+                if status not in ("present", "absent", "uncertain"):
+                    return error(f"Trạng thái '{status}' của sinh viên {st_id} không hợp lệ", 400)
+
             # MANDATORY RULE: Must resolve all 'uncertain' students before confirming
             uncertain_records = [r for r in confirmed_records if r.get("status") == "uncertain"]
             if uncertain_records:
@@ -213,31 +225,111 @@ def lambda_handler(event, context):
                     400
                 )
 
-            # Save confirmed attendance in DynamoDB
-            db.save_attendance_batch(session_id, confirmed_records)
-
-            # Filter absent students for SES dispatch
-            absent_students = [r for r in confirmed_records if r.get("status") == "absent"]
+            # Filter absent students and dispatch emails with a single reused SMTP connection
+            absent_records = [r for r in confirmed_records if r.get("status") == "absent"]
             session_time_str = datetime.now().strftime("%H:%M ngày %d/%m/%Y")
+            now_iso = datetime.now().isoformat()
 
-            dispatch_res = mailer.dispatch_batch_absence_emails(
-                absent_students=absent_students,
+            batch_res = mailer.dispatch_batch_absence_emails(
+                absent_students=absent_records,
                 class_name=class_name,
                 session_time=session_time_str
             )
 
+            detail_map = {d["studentId"]: d for d in batch_res.get("details", [])}
+            for r in confirmed_records:
+                st_id = r.get("studentId")
+                if r.get("status") == "absent":
+                    res_item = detail_map.get(st_id, {})
+                    if res_item.get("success"):
+                        r["emailStatus"] = "sent"
+                        r["emailError"] = None
+                        r["emailSentAt"] = now_iso
+                    else:
+                        r["emailStatus"] = "failed"
+                        r["emailError"] = res_item.get("error") or "Lỗi gửi máy chủ mail"
+                        r["emailSentAt"] = None
+                else:
+                    r["emailStatus"] = "none"
+                    r["emailError"] = None
+                    r["emailSentAt"] = None
+
+            # Save confirmed attendance with per-student delivery status in DynamoDB
+            db.save_attendance_batch(session_id, confirmed_records)
+
             # Mark session confirmed and record email dispatch timestamp
-            now_iso = datetime.now().isoformat()
             db.mark_session_confirmed(class_id, session_id, emails_sent_at=now_iso)
 
             return success({
                 "message": f"Điểm danh buổi học {session_id} đã được xác nhận chính thức",
                 "sessionStatus": "confirmed",
-                "emailsDispatched": dispatch_res["success"],
-                "emailsFailed": dispatch_res["failed"]
+                "emailsDispatched": batch_res["success"],
+                "emailsFailed": batch_res["failed"],
+                "records": confirmed_records
             })
 
-        # 4. GET Export Attendance to CSV
+        # 4. POST Retry Absence Email for a Student
+        elif "/retry-email" in path and http_method == "POST":
+            if not session_id:
+                return error("Thiếu sessionId", 400)
+
+            # Verify session belongs to class
+            session_info = db.get_session(class_id, session_id)
+            if not session_info:
+                return error("Không tìm thấy buổi học thuộc lớp này", 404)
+
+            body = json.loads(event.get("body", "{}"))
+            student_id = body.get("studentId")
+            if not student_id:
+                return error("Thiếu studentId", 400)
+
+            records = db.get_session_attendance(session_id)
+            target = next((r for r in records if r.get("studentId") == student_id), None)
+            if not target:
+                return error("Không tìm thấy thông tin sinh viên trong buổi học này", 404)
+
+            if target.get("status") != "absent":
+                return error("Sinh viên có mặt, không cần gửi cảnh báo vắng", 400)
+
+            # Strictly only allow retrying if status is failed
+            if target.get("emailStatus") == "sent":
+                return error("Email cho sinh viên này đã được gửi thành công trước đó, không thể gửi lại", 400)
+
+            if target.get("emailStatus") != "failed":
+                return error("Chỉ có thể gửi lại email cho sinh viên có trạng thái gửi thất bại (failed)", 400)
+
+            email = target.get("email", "").strip()
+            name = target.get("fullName", student_id)
+            session_time_str = datetime.now().strftime("%H:%M ngày %d/%m/%Y")
+            now_iso = datetime.now().isoformat()
+
+            if not email or "@" not in email:
+                err_msg = "Email sinh viên không hợp lệ hoặc bị trống"
+                db.update_attendance_email_status(session_id, student_id, "failed", err_msg, None)
+                return error(err_msg, 400)
+
+            ok, err_msg = mailer.send_absence_warning(
+                student_email=email,
+                student_name=name,
+                student_id=student_id,
+                class_name=class_name,
+                session_time=session_time_str
+            )
+
+            if ok:
+                db.update_attendance_email_status(session_id, student_id, "sent", None, now_iso)
+                return success({
+                    "message": f"Đã gửi lại email thành công cho sinh viên {name}",
+                    "studentId": student_id,
+                    "emailStatus": "sent",
+                    "emailSentAt": now_iso
+                })
+            else:
+                err_reason = err_msg or "Lỗi kết nối máy chủ gửi mail"
+                db.update_attendance_email_status(session_id, student_id, "failed", err_reason, None)
+                return error(f"Gửi lại thất bại: {err_reason}", 502)
+
+        # 5. GET Export Attendance to CSV
         elif "/export" in path and http_method == "GET":
             if not session_id:
                 return error("Thiếu sessionId", 400)
@@ -258,6 +350,30 @@ def lambda_handler(event, context):
                 "sessionId": session_id,
                 "csv": "\n".join(csv_lines)
             })
+
+        # 6. GET All Sessions of a Class for Attendance History
+        elif (path.endswith("/sessions") or "/sessions" in path) and http_method == "GET" and not session_id:
+            sessions = db.get_sessions_by_class(class_id)
+            session_list = []
+            for s in sessions:
+                s_id = s.get("sessionId")
+                recs = db.get_session_attendance(s_id)
+                present_c = sum(1 for r in recs if r.get("status") == "present")
+                absent_c = sum(1 for r in recs if r.get("status") == "absent")
+                session_list.append({
+                    "sessionId": s_id,
+                    "classId": class_id,
+                    "className": class_name,
+                    "startedAt": s.get("startedAt", ""),
+                    "status": s.get("status", "draft"),
+                    "totalStudents": len(recs),
+                    "presentCount": present_c,
+                    "absentCount": absent_c,
+                    "emailsSentAt": s.get("emailsSentAt"),
+                    "records": recs
+                })
+            session_list.sort(key=lambda x: x.get("startedAt", ""), reverse=True)
+            return success({"sessions": session_list})
 
         return error(f"Unsupported path or method {http_method} {path}", 404)
 

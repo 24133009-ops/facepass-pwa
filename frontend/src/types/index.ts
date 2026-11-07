@@ -47,6 +47,9 @@ export interface AttendanceRecord {
     Left: number;
     Top: number;
   } | null;
+  emailStatus?: 'sent' | 'failed' | 'pending';
+  emailError?: string;
+  emailSentAt?: string;
 }
 
 export interface UnknownFace {
