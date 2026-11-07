@@ -1,4 +1,12 @@
-import { ClassItem, StudentItem, Teacher } from '../types';
+import {
+  ClassItem,
+  StudentItem,
+  Teacher,
+  PresignedPost,
+  ScanResult,
+  AttendanceRecord,
+  AttendanceConfirmResult
+} from '../types';
 import { INITIAL_CLASSES, INITIAL_STUDENTS } from './mockData';
 
 const IS_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
@@ -27,10 +35,9 @@ export const apiService = {
     const trimmedEmail = email.trim().toLowerCase();
 
     if (IS_MOCK) {
-      // Simulate network latency (250ms)
       await new Promise((r) => setTimeout(r, 250));
 
-      // CASE A: User created by admin requiring initial password change (NEW_PASSWORD_REQUIRED)
+      // CASE A: Force initial password change
       if (trimmedEmail === 'newteacher@example.com') {
         if (pass !== 'TempPass@123') {
           throw new Error('Mật khẩu tạm thời không đúng (Gợi ý: TempPass@123)');
@@ -56,7 +63,6 @@ export const apiService = {
       };
     }
 
-    // Real AWS Cognito Auth Endpoint
     const res = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,7 +90,6 @@ export const apiService = {
   async completeNewPassword(tempSession: string, newPass: string): Promise<LoginResult> {
     if (IS_MOCK) {
       await new Promise((r) => setTimeout(r, 300));
-      // Enforce Cognito Password Policy: min 8 chars, 1 uppercase, 1 lowercase, 1 number
       if (newPass.length < 8) {
         throw new Error('Mật khẩu mới phải có tối thiểu 8 ký tự');
       }
@@ -317,13 +322,321 @@ export const apiService = {
       return;
     }
 
-    // Real API triggers GDPR DeleteFaces in Rekognition & DynamoDB delete
     const res = await fetch(`${API_BASE_URL}/classes/${classId}/students/${studentId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Lỗi khi xóa sinh viên');
+  },
+
+  // =========================================================================
+  // S3 PRESIGNED POST UPLOAD UTILITY
+  // Strict Order: Server fields first, file field LAST
+  // =========================================================================
+  async uploadToPresignedPost(presignedPost: PresignedPost, fileBlob: Blob): Promise<void> {
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 350));
+      return;
+    }
+
+    // MANDATORY S3 RULE:
+    // Append all server presigned fields FIRST, followed by 'file' LAST
+    const formData = new FormData();
+    Object.entries(presignedPost.fields).forEach(([key, val]) => {
+      formData.append(key, val);
+    });
+    formData.append('file', fileBlob, 'photo.jpg');
+
+    const res = await fetch(presignedPost.url, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`Tải ảnh lên S3 thất bại với mã lỗi HTTP ${res.status}`);
+    }
+  },
+
+  // =========================================================================
+  // TASK 9: FACE ENROLLMENT APIs
+  // =========================================================================
+  async getEnrollmentUploadUrl(
+    token: string,
+    classId: string,
+    studentId: string
+  ): Promise<{ presignedPost: PresignedPost; s3Key: string }> {
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 150));
+      const s3Key = `enrollments/teacher_demo/${classId}/${studentId}.jpg`;
+      return {
+        presignedPost: {
+          url: 'https://facepass-photos-mock.s3.ap-southeast-1.amazonaws.com',
+          fields: {
+            key: s3Key,
+            'Content-Type': 'image/jpeg',
+            bucket: 'facepass-photos-mock'
+          }
+        },
+        s3Key
+      };
+    }
+
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/students/${studentId}/enrollment-url`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Lỗi cấp URL tải ảnh sinh trắc học');
+    return data;
+  },
+
+  async processEnrollment(
+    token: string,
+    classId: string,
+    studentId: string,
+    consentAgreed: boolean,
+    consentAt: string,
+    s3Key: string
+  ): Promise<{ message: string; faceIds: string[]; rawPhotoPurged: boolean }> {
+    if (!consentAgreed) {
+      throw new Error('Bắt buộc sinh viên phải đồng ý trước khi đăng ký khuôn mặt.');
+    }
+
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 400));
+      const list = mockStudents[classId] || [];
+      const student = list.find((s) => s.studentId === studentId);
+      if (!student) throw new Error('Không tìm thấy sinh viên trong lớp');
+
+      // Generate 2-3 mock biometric face identifiers
+      const newFaceId = `face-biometric-${Date.now().toString(36)}`;
+      student.faceIds = Array.from(new Set([...(student.faceIds || []), newFaceId]));
+      student.consentAt = consentAt;
+      student.updatedAt = new Date().toISOString();
+
+      return {
+        message: 'Đăng ký đặc trưng khuôn mặt thành công',
+        faceIds: student.faceIds,
+        rawPhotoPurged: true
+      };
+    }
+
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/students/${studentId}/enroll`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        consentAgreed,
+        consentAt,
+        s3Key
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Lỗi xử lý trích xuất khuôn mặt');
+    return data;
+  },
+
+  // =========================================================================
+  // TASK 10: ATTENDANCE SCAN & CONFIRMATION APIs
+  // =========================================================================
+  async getAttendanceUploadUrl(
+    token: string,
+    classId: string
+  ): Promise<{ presignedPost: PresignedPost; s3Key: string; sessionId: string }> {
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 150));
+      const sessId = `sess-${Date.now().toString(36).slice(-6)}`;
+      const s3Key = `attendance/teacher_demo/${classId}/${sessId}.jpg`;
+      return {
+        presignedPost: {
+          url: 'https://facepass-photos-mock.s3.ap-southeast-1.amazonaws.com',
+          fields: {
+            key: s3Key,
+            'Content-Type': 'image/jpeg',
+            bucket: 'facepass-photos-mock'
+          }
+        },
+        s3Key,
+        sessionId: sessId
+      };
+    }
+
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/attendance/upload-url`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Lỗi cấp URL tải ảnh lớp học');
+    return data;
+  },
+
+  async scanAttendance(
+    token: string,
+    classId: string,
+    sessionId: string,
+    s3Key: string
+  ): Promise<ScanResult> {
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 600)); // Simulate Rekognition multi-face processing latency
+      const classItem = mockClasses.find((c) => c.classId === classId);
+      const allStudents = mockStudents[classId] || [];
+
+      // Realistic mock distribution:
+      // - Students with registered faces: mostly Present (>=90%), 1 student Uncertain (80-89%)
+      // - Students without registered faces: Absent
+      const present: AttendanceRecord[] = [];
+      const uncertain: AttendanceRecord[] = [];
+      const absent: AttendanceRecord[] = [];
+
+      const enrolled = allStudents.filter((s) => s.faceIds && s.faceIds.length > 0);
+      const notEnrolled = allStudents.filter((s) => !s.faceIds || s.faceIds.length === 0);
+
+      enrolled.forEach((st, idx) => {
+        if (idx === 0 && enrolled.length > 2) {
+          // 1 student placed in Uncertain group (e.g. 84.7% similarity) to demonstrate manual review rule
+          uncertain.push({
+            studentId: st.studentId,
+            fullName: st.fullName,
+            email: st.email,
+            status: 'uncertain',
+            similarity: 84.7,
+            boundingBox: { Width: 0.12, Height: 0.16, Left: 0.25, Top: 0.3 }
+          });
+        } else if (idx < enrolled.length - 1 || enrolled.length <= 2) {
+          // Present group (>=90%)
+          const sim = Math.round((92 + (idx * 2.3) % 7) * 10) / 10;
+          present.push({
+            studentId: st.studentId,
+            fullName: st.fullName,
+            email: st.email,
+            status: 'present',
+            similarity: Math.min(sim, 98.5),
+            boundingBox: { Width: 0.11, Height: 0.15, Left: 0.1 + idx * 0.18, Top: 0.35 }
+          });
+        } else {
+          // Absent
+          absent.push({
+            studentId: st.studentId,
+            fullName: st.fullName,
+            email: st.email,
+            status: 'absent',
+            similarity: 0,
+            boundingBox: null
+          });
+        }
+      });
+
+      // Students without registered faces are placed into absent
+      notEnrolled.forEach((st) => {
+        absent.push({
+          studentId: st.studentId,
+          fullName: st.fullName,
+          email: st.email,
+          status: 'absent',
+          similarity: 0,
+          boundingBox: null
+        });
+      });
+
+      return {
+        sessionId,
+        classId,
+        className: classItem?.name || 'Lớp học',
+        scannedAt: new Date().toISOString(),
+        summary: {
+          totalEnrolled: allStudents.length,
+          presentCount: present.length,
+          uncertainCount: uncertain.length,
+          absentCount: absent.length,
+          unknownCount: 1
+        },
+        present,
+        uncertain,
+        absent,
+        unknowns: [
+          {
+            confidence: 88.6,
+            boundingBox: { Width: 0.1, Height: 0.14, Left: 0.8, Top: 0.4 }
+          }
+        ]
+      };
+    }
+
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/attendance/scan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ sessionId, s3Key })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Lỗi quét nhận diện khuôn mặt');
+    return data;
+  },
+
+  async confirmAttendance(
+    token: string,
+    classId: string,
+    sessionId: string,
+    records: AttendanceRecord[]
+  ): Promise<AttendanceConfirmResult> {
+    // MANDATORY RULE: Blocks confirmation if any student is still 'uncertain'
+    const uncertainRemaining = records.filter((r) => r.status === 'uncertain');
+    if (uncertainRemaining.length > 0) {
+      throw new Error(
+        `Không thể xác nhận buổi học khi vẫn còn ${uncertainRemaining.length} sinh viên ở nhóm 'Cần xác nhận'. Vui lòng phân loại hết trước khi xác nhận.`
+      );
+    }
+
+    const absentStudents = records.filter((r) => r.status === 'absent');
+
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 400));
+      return {
+        message: `Điểm danh buổi học ${sessionId} đã được xác nhận chính thức`,
+        sessionStatus: 'confirmed',
+        emailsDispatched: absentStudents.length,
+        emailsFailed: 0
+      };
+    }
+
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/attendance/${sessionId}/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ records })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Lỗi xác nhận điểm danh');
+    return data;
+  },
+
+  async exportAttendanceCsv(token: string, classId: string, sessionId: string): Promise<string> {
+    if (IS_MOCK) {
+      await new Promise((r) => setTimeout(r, 200));
+      const classItem = mockClasses.find((c) => c.classId === classId);
+      const allStudents = mockStudents[classId] || [];
+      const lines = ['MSSV,Ho va Ten,Email,Trang Thai,Do Tuong Dong,Lop,Thoi Gian'];
+      allStudents.forEach((st, idx) => {
+        const stStatus = idx % 3 === 0 ? 'absent' : 'present';
+        const sim = stStatus === 'present' ? '94.5%' : '0%';
+        lines.push(
+          `"${st.studentId}","${st.fullName}","${st.email}","${stStatus}","${sim}","${classItem?.name || classId}","${new Date().toISOString()}"`
+        );
+      });
+      return lines.join('\n');
+    }
+
+    const res = await fetch(`${API_BASE_URL}/classes/${classId}/attendance/${sessionId}/export`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Lỗi xuất file CSV');
+    return data.csv;
   }
 };
-

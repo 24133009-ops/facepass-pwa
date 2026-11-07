@@ -30,12 +30,27 @@ export interface StudentItem {
   updatedAt?: string;
 }
 
+export interface PresignedPost {
+  url: string;
+  fields: Record<string, string>;
+}
+
 export interface AttendanceRecord {
   studentId: string;
   fullName: string;
   email: string;
   status: 'present' | 'uncertain' | 'absent';
   similarity: number;
+  boundingBox?: {
+    Width: number;
+    Height: number;
+    Left: number;
+    Top: number;
+  } | null;
+}
+
+export interface UnknownFace {
+  confidence: number;
   boundingBox?: {
     Width: number;
     Height: number;
@@ -53,3 +68,27 @@ export interface AttendanceSession {
   emailsSentAt?: string | null;
 }
 
+export interface ScanResult {
+  sessionId: string;
+  classId: string;
+  className: string;
+  scannedAt: string;
+  summary: {
+    totalEnrolled: number;
+    presentCount: number;
+    uncertainCount: number;
+    absentCount: number;
+    unknownCount: number;
+  };
+  present: AttendanceRecord[];
+  uncertain: AttendanceRecord[];
+  absent: AttendanceRecord[];
+  unknowns: UnknownFace[];
+}
+
+export interface AttendanceConfirmResult {
+  message: string;
+  sessionStatus: string;
+  emailsDispatched: number;
+  emailsFailed: number;
+}

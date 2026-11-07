@@ -11,12 +11,15 @@ import {
   ScanFace
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { ClassItem, StudentItem } from '../types';
+import { ClassItem, StudentItem, ScanResult } from '../types';
 import { apiService } from '../services/api';
 import { Header } from '../components/common/Header';
 import { StudentItemCard } from '../components/students/StudentItem';
 import { AddStudentModal } from '../components/students/AddStudentModal';
 import { ImportCsvModal } from '../components/students/ImportCsvModal';
+import { FaceEnrollmentModal } from '../components/enrollment/FaceEnrollmentModal';
+import { AttendanceScanModal } from '../components/attendance/AttendanceScanModal';
+import { AttendanceReviewModal } from '../components/attendance/AttendanceReviewModal';
 import { Button } from '../components/common/Button';
 
 interface ClassDetailPageProps {
@@ -30,11 +33,21 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  // Modal controls
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
-  const [isActionLoading, setIsActionLoading] = useState(false);
+  // Student CRUD Modals
+  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState<boolean>(false);
+  const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
+
+  // Task 9: Biometric Face Enrollment State
+  const [selectedEnrollStudent, setSelectedEnrollStudent] = useState<StudentItem | null>(null);
+  const [isEnrollModalOpen, setIsEnrollModalOpen] = useState<boolean>(false);
+
+  // Task 10: Attendance Scan & Review State
+  const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
 
   const fetchStudents = async () => {
     if (!token) return;
@@ -54,6 +67,11 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
     fetchStudents();
   }, [token, classItem.classId]);
 
+  const showToast = (msg: string) => {
+    setSuccessToast(msg);
+    setTimeout(() => setSuccessToast(null), 3500);
+  };
+
   const handleAddStudent = async (studentData: {
     studentId: string;
     fullName: string;
@@ -64,6 +82,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
     try {
       const created = await apiService.addStudent(token, classItem.classId, studentData);
       setStudents((prev) => [...prev, created]);
+      showToast(`Đã thêm sinh viên ${created.fullName}`);
     } finally {
       setIsActionLoading(false);
     }
@@ -75,6 +94,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
     try {
       const imported = await apiService.importStudentsCsv(token, classItem.classId, csvContent);
       setStudents((prev) => [...prev, ...imported]);
+      showToast(`Đã nhập thành công ${imported.length} sinh viên từ file CSV`);
     } finally {
       setIsActionLoading(false);
     }
@@ -84,6 +104,27 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
     if (!token) return;
     await apiService.deleteStudent(token, classItem.classId, studentId);
     setStudents((prev) => prev.filter((s) => s.studentId !== studentId));
+    showToast(`Đã xóa vĩnh viễn hồ sơ và dữ liệu sinh trắc học của sinh viên ${studentId}`);
+  };
+
+  const handleOpenEnrollModal = (student: StudentItem) => {
+    setSelectedEnrollStudent(student);
+    setIsEnrollModalOpen(true);
+  };
+
+  const handleEnrollSuccess = () => {
+    fetchStudents();
+    showToast('Đăng ký khuôn mặt thành công');
+  };
+
+  const handleScanComplete = (result: ScanResult) => {
+    setScanResult(result);
+    setIsReviewModalOpen(true);
+  };
+
+  const handleAttendanceConfirmed = () => {
+    fetchStudents();
+    showToast('Điểm danh đã được xác nhận và thông báo SES đã được gửi');
   };
 
   const enrolledCount = students.filter((s) => s.faceIds && s.faceIds.length > 0).length;
@@ -99,6 +140,16 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Header title={classItem.name} showBack onBack={onBack} />
+
+      {/* Floating Success Toast */}
+      {successToast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4 animate-in fade-in slide-in-from-top duration-300">
+          <div className="bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold">
+            <CheckCircle2 className="w-5 h-5 shrink-0" />
+            <span>{successToast}</span>
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 max-w-md w-full mx-auto p-4 space-y-4 pb-28">
         {/* Class Overview Banner */}
@@ -139,27 +190,58 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
             </div>
           </div>
 
-          {/* Quick Action Cards for Subsequent Tasks */}
+          {/* Interactive Action Cards: Task 9 & Task 10 */}
           <div className="grid grid-cols-2 gap-2.5 pt-1">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 flex flex-col justify-between">
-              <div className="flex items-center gap-1.5 text-blue-800 text-xs font-bold mb-1">
-                <ScanFace className="w-4 h-4 text-blue-600" />
-                <span>Điểm Danh AI</span>
+            {/* Task 10 Trigger */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 flex flex-col justify-between shadow-2xs">
+              <div>
+                <div className="flex items-center gap-1.5 text-blue-900 text-xs font-bold mb-1">
+                  <ScanFace className="w-4 h-4 text-blue-600" />
+                  <span>Điểm Danh AI</span>
+                </div>
+                <p className="text-[11px] text-blue-700 leading-snug mb-3">
+                  Chụp ảnh toàn cảnh lớp học, AI đối soát 3 nhóm & gửi SES.
+                </p>
               </div>
-              <p className="text-[11px] text-blue-700 mb-2">Chụp ảnh tập thể lớp và đối soát Rekognition</p>
-              <Button size="md" variant="primary" className="text-xs min-h-[38px] py-1.5">
-                Bắt đầu (Task 10)
+              <Button
+                size="md"
+                variant="primary"
+                onClick={() => setIsScanModalOpen(true)}
+                className="text-xs min-h-[42px] py-2 font-bold shadow-xs"
+              >
+                <span>Bắt Đầu Quét</span>
               </Button>
             </div>
 
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50/50 border border-emerald-200 flex flex-col justify-between">
-              <div className="flex items-center gap-1.5 text-emerald-800 text-xs font-bold mb-1">
-                <Camera className="w-4 h-4 text-emerald-600" />
-                <span>Đăng Ký Mặt</span>
+            {/* Task 9 Trigger */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50/70 border border-emerald-200 flex flex-col justify-between shadow-2xs">
+              <div>
+                <div className="flex items-center gap-1.5 text-emerald-900 text-xs font-bold mb-1">
+                  <Camera className="w-4 h-4 text-emerald-600" />
+                  <span>Đăng Ký Mặt</span>
+                </div>
+                <p className="text-[11px] text-emerald-700 leading-snug mb-3">
+                  Chụp 2-3 ảnh chân dung kèm cam kết đồng ý sinh trắc học.
+                </p>
               </div>
-              <p className="text-[11px] text-emerald-700 mb-2">Chụp chân dung SV kèm cam kết consent</p>
-              <Button size="md" variant="outline" className="text-xs min-h-[38px] py-1.5 border-emerald-300 text-emerald-800">
-                Chụp ảnh (Task 9)
+              <Button
+                size="md"
+                variant="outline"
+                onClick={() => {
+                  const firstWithoutFace = students.find(
+                    (s) => !s.faceIds || s.faceIds.length === 0
+                  );
+                  if (firstWithoutFace) {
+                    handleOpenEnrollModal(firstWithoutFace);
+                  } else if (students.length > 0) {
+                    handleOpenEnrollModal(students[0]);
+                  } else {
+                    setIsAddModalOpen(true);
+                  }
+                }}
+                className="text-xs min-h-[42px] py-2 border-emerald-300 text-emerald-800 font-bold hover:bg-emerald-50"
+              >
+                <span>Chụp Chân Dung</span>
               </Button>
             </div>
           </div>
@@ -250,13 +332,14 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                 key={student.studentId}
                 student={student}
                 onDelete={handleDeleteStudent}
+                onEnroll={handleOpenEnrollModal}
               />
             ))}
           </div>
         )}
       </main>
 
-      {/* Modals */}
+      {/* Modals for Task 8, 9, 10 */}
       <AddStudentModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -270,7 +353,33 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
         onImport={handleImportCsv}
         isLoading={isActionLoading}
       />
+
+      {/* Task 9: Biometric Face Enrollment Modal */}
+      <FaceEnrollmentModal
+        isOpen={isEnrollModalOpen}
+        onClose={() => setIsEnrollModalOpen(false)}
+        student={selectedEnrollStudent}
+        classId={classItem.classId}
+        onSuccess={handleEnrollSuccess}
+      />
+
+      {/* Task 10: Attendance Camera Scan Modal */}
+      <AttendanceScanModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        classId={classItem.classId}
+        className={classItem.name}
+        onScanComplete={handleScanComplete}
+      />
+
+      {/* Task 10: Attendance 3-Group Review Modal */}
+      <AttendanceReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        scanResult={scanResult}
+        classId={classItem.classId}
+        onConfirmed={handleAttendanceConfirmed}
+      />
     </div>
   );
 };
-

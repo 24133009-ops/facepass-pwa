@@ -7,6 +7,31 @@
 
 ---
 
+## 📁 Cấu Trúc Dự Án (Project Structure)
+
+```text
+facepass-pwa/
+├── backend/            # AWS SAM Serverless (Lambda Python 3.12, Rekognition, DynamoDB, SES, S3)
+│   ├── src/            # Lambda handlers (classes, students, enrollment, attendance) & common libs
+│   ├── tests/          # Bộ kiểm thử unit test tự động (24/24 test pass)
+│   ├── layers/         # Pillow Lambda Layer cho xử lý cắt ảnh khuôn mặt
+│   └── template.yaml   # AWS SAM CloudFormation Infrastructure Template
+├── frontend/           # PWA Di Động (React 18 + Vite + TypeScript + Tailwind CSS)
+│   ├── src/            # Components, Context, Pages, Mock API, Services
+│   ├── public/         # PWA Manifest, favicon, icons
+│   ├── package.json    # Mọi lệnh npm chạy trực tiếp trong frontend/
+│   ├── vite.config.ts  # Cấu hình Vite PWA (NetworkOnly bypass cho /api và ảnh)
+│   ├── .env.development# VITE_USE_MOCK=true (chế độ phát triển local)
+│   └── .env.production # VITE_USE_MOCK=false (chế độ production AWS thật)
+└── docs/               # Kế hoạch dự án, kiến trúc và quy chuẩn phát triển (PROJECT_PLAN.md)
+```
+
+> **Lưu ý quan trọng về lệnh thực thi:**
+> - Mọi thao tác npm (`npm install`, `npm run dev`, `npm run build`) được thực thi bên trong thư mục `frontend/`.
+> - Mọi thao tác SAM CLI (`sam build`, `sam validate`) và unit test backend được thực thi trong thư mục `backend/` hoặc từ root chỉ định đường dẫn.
+
+---
+
 ## 🏗️ 1. Quy Trình Build Hạ Tầng Backend (Lưu Ý Bắt Buộc Về Pillow Layer)
 
 Lambda Function xử lý cắt ảnh khuôn mặt (`Pillow`) có chứa thư viện C binary. Khi build trên máy tính cá nhân (Windows hoặc macOS), **bắt buộc phải build bằng Docker container** để nhắm đúng kiến trúc Linux của AWS Lambda:
