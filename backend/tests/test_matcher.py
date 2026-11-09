@@ -4,7 +4,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
-from common.ses_mailer import EMAIL_TEMPLATE
+from common.mailer import EMAIL_TEMPLATE
 
 class TestMatcherAndMailer(unittest.TestCase):
     def test_classification_logic(self):

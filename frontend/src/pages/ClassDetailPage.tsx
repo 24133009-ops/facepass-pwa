@@ -131,9 +131,14 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
 
   const handleDeleteStudent = async (studentId: string) => {
     if (!token) return;
-    await apiService.deleteStudent(token, classItem.classId, studentId);
-    setStudents((prev) => prev.filter((s) => s.studentId !== studentId));
-    showToast(`Đã xóa vĩnh viễn hồ sơ và dữ liệu sinh trắc học của sinh viên ${studentId}`);
+    try {
+      await apiService.deleteStudent(token, classItem.classId, studentId);
+      setStudents((prev) => prev.filter((s) => s.studentId !== studentId));
+      showToast(`Đã xóa vĩnh viễn hồ sơ và dữ liệu sinh trắc học của sinh viên ${studentId}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Xóa sinh viên thất bại');
+      throw err;
+    }
   };
 
   const handleOpenEnrollModal = (student: StudentItem) => {

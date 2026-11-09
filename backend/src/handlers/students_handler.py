@@ -2,13 +2,12 @@
 import json
 import csv
 import io
-import re
 from common.responses import success, error
 from common.auth import get_teacher_id, verify_class_ownership
+from common.validators import is_valid_email
+from common.log_utils import log_error
 from common import dynamodb as db
 from common import rekognition as rek
-
-EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 def lambda_handler(event, context):
     http = event.get("requestContext", {}).get("http", {})
@@ -51,7 +50,7 @@ def lambda_handler(event, context):
                     email = (row.get("email") or row.get("Email") or "").strip()
                     if not st_id or not full_name:
                         invalid_rows.append(f"Dòng {row_idx}: Thiếu MSSV hoặc Họ tên")
-                    elif email and not EMAIL_REGEX.match(email):
+                    elif email and not is_valid_email(email):
                         invalid_rows.append(f"Dòng {row_idx}: Email '{email}' không đúng định dạng")
                     else:
                         st_item = db.save_student(class_id, st_id, full_name, email)
@@ -75,7 +74,7 @@ def lambda_handler(event, context):
             if not st_id or not full_name:
                 return error("Vui lòng điền MSSV và họ tên sinh viên", 400)
 
-            if email and not EMAIL_REGEX.match(email):
+            if email and not is_valid_email(email):
                 return error(f"Email '{email}' không đúng định dạng chuẩn", 400)
 
             st_item = db.save_student(class_id, st_id, full_name, email)
@@ -93,7 +92,9 @@ def lambda_handler(event, context):
             face_ids = st_info.get("faceIds", [])
             # Delete biometric vectors from Rekognition collection
             if face_ids:
-                rek.delete_student_faces_from_collection(collection_id, face_ids)
+                deleted = rek.delete_student_faces_from_collection(collection_id, face_ids)
+                if not deleted:
+                    return error("Không thể xóa đặc trưng sinh trắc học khuôn mặt từ Amazon Rekognition", 502)
 
             # Delete record from DynamoDB
             db.delete_student(class_id, student_id)
@@ -102,5 +103,5 @@ def lambda_handler(event, context):
         return error(f"Unsupported method {http_method}", 405)
 
     except Exception as e:
-        print(f"Error in students_handler: {str(e)}")
+        log_error("STUDENTS_ERROR", e, context)
         return error(str(e), 500)

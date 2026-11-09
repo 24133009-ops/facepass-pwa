@@ -12,6 +12,7 @@ import os
 import boto3
 from PIL import Image
 from typing import List, Dict, Any, Tuple
+from common.log_utils import log_error
 
 rekognition = boto3.client("rekognition", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
 
@@ -19,10 +20,10 @@ def create_class_collection(collection_id: str) -> bool:
     try:
         rekognition.create_collection(CollectionId=collection_id)
         return True
-    except rekognition.exceptions.ResourceAlreadyExistsException:
-        return True
     except Exception as e:
-        print(f"Error creating collection {collection_id}: {str(e)}")
+        err_code = getattr(e, "response", {}).get("Error", {}).get("Code")
+        if err_code != "ResourceAlreadyExistsException" and "ResourceAlreadyExistsException" not in str(e):
+            log_error("REKOGNITION_ERROR", e)
         raise e
 
 def delete_class_collection(collection_id: str) -> bool:
@@ -32,7 +33,7 @@ def delete_class_collection(collection_id: str) -> bool:
     except rekognition.exceptions.ResourceNotFoundException:
         return True
     except Exception as e:
-        print(f"Error deleting collection {collection_id}: {str(e)}")
+        log_error("REKOGNITION_ERROR", e)
         raise e
 
 def index_student_face(collection_id: str, student_id: str, image_bytes: bytes) -> Tuple[List[str], str]:
@@ -85,7 +86,17 @@ def delete_student_faces_from_collection(collection_id: str, face_ids: List[str]
         )
         return True
     except Exception as e:
-        print(f"Error deleting faces {face_ids} from {collection_id}: {str(e)}")
+        err_code = None
+        if hasattr(e, "response") and isinstance(e.response, dict):
+            err_code = e.response.get("Error", {}).get("Code")
+        elif "ResourceNotFoundException" in str(e):
+            err_code = "ResourceNotFoundException"
+
+        if err_code == "ResourceNotFoundException":
+            # Collection does not exist: biometric vectors are considered clean / already erased
+            return True
+
+        log_error("REKOGNITION_ERROR", e)
         return False
 
 def calculate_crop_box(box: Dict[str, float], img_w: int, img_h: int, padding_ratio: float = 0.20) -> Tuple[int, int, int, int]:
@@ -171,6 +182,6 @@ def search_face_in_collection(collection_id: str, face_bytes: bytes, threshold: 
                 "similarity": round(float(similarity), 1)
             }
     except Exception as e:
-        print(f"Search face warning: {str(e)}")
+        log_error("REKOGNITION_WARN", e)
     return None
 

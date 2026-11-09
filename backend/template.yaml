@@ -3,7 +3,7 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   FacePass PWA - Production-grade Serverless Attendance System
   Region: ap-southeast-1 | Runtime: Python 3.12
-  Architecture: SAM, HTTP API, Lambda, Rekognition, DynamoDB, S3, SES, Cognito, CloudFront
+  Architecture: SAM, HTTP API, Lambda, Rekognition, DynamoDB, S3, Cognito, CloudFront, SSM Parameter Store (Gmail SMTP)
 
 Parameters:
   Stage:
@@ -11,13 +11,8 @@ Parameters:
     Default: prod
     AllowedValues: [dev, staging, prod]
     Description: Deployment environment stage.
-  SenderEmail:
-    Type: String
-    Default: verified-teacher@example.com
-    Description: Verified SES sender email address used for absence warning notifications.
   AlertNotificationEmail:
     Type: String
-    Default: admin-alerts@example.com
     Description: Email address to receive AWS Budgets threshold alerts (Informational only, will not stop services).
   BudgetLimitUSD:
     Type: Number
@@ -89,7 +84,10 @@ Resources:
   HttpApiGateway:
     Type: AWS::Serverless::HttpApi
     Properties:
-      StageName: !Ref Stage
+      StageName: "$default"
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
       CorsConfiguration:
         AllowOrigins:
           - "http://localhost:5173"
@@ -202,7 +200,7 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ["*"]
-            AllowedMethods: [GET, PUT, POST, HEAD]
+            AllowedMethods: [POST]
             AllowedOrigins:
               - "http://localhost:5173"
               - !Sub "https://${FrontendDistribution.DomainName}"
@@ -305,6 +303,7 @@ Resources:
   ClassesFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "facepass-classes-${Stage}"
       CodeUri: src/
       Handler: handlers.classes_handler.lambda_handler
       Timeout: 10
@@ -342,6 +341,7 @@ Resources:
   StudentsFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "facepass-students-${Stage}"
       CodeUri: src/
       Handler: handlers.students_handler.lambda_handler
       Timeout: 15
@@ -379,6 +379,7 @@ Resources:
   EnrollmentFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "facepass-enrollment-${Stage}"
       CodeUri: src/
       Handler: handlers.enrollment_handler.lambda_handler
       Timeout: 25
@@ -391,11 +392,16 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref PhotoStorageBucket
         - Statement:
+            # IndexFaces is strictly scoped to class-specific collections
             - Effect: Allow
               Action:
                 - rekognition:IndexFaces
-                - rekognition:DetectFaces
               Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+            # DetectFaces operates on raw images and does not support resource-level permissions per AWS IAM specs
+            - Effect: Allow
+              Action:
+                - rekognition:DetectFaces
+              Resource: "*"
       Events:
         GetEnrollmentUploadUrl:
           Type: HttpApi
@@ -413,6 +419,7 @@ Resources:
   AttendanceFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "facepass-attendance-${Stage}"
       CodeUri: src/
       Handler: handlers.attendance_handler.lambda_handler
       Layers:
@@ -447,11 +454,14 @@ Resources:
                 - ssm:GetParameter
                 - ssm:GetParameters
               Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/facepass/gmail/*"
-            # AWS KMS Decrypt access for SSM SecureString parameters
+            # AWS KMS Decrypt access for SSM SecureString parameters strictly via SSM service
             - Effect: Allow
               Action:
                 - kms:Decrypt
               Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
       Events:
         GetAttendanceUploadUrl:
           Type: HttpApi
@@ -514,21 +524,24 @@ Resources:
               Address: !Ref AlertNotificationEmail
 
 Outputs:
-  HttpApiUrl:
+  ApiUrl:
     Description: HTTP API Gateway Endpoint Base URL
-    Value: !Sub "https://${HttpApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+    Value: !Sub "https://${HttpApiGateway}.execute-api.${AWS::Region}.amazonaws.com"
   UserPoolId:
     Description: Cognito User Pool ID (Admin created teachers only)
     Value: !Ref TeacherUserPool
   UserPoolClientId:
     Description: Cognito App Client ID (no secret)
     Value: !Ref TeacherUserPoolClient
-  S3BucketName:
-    Description: Private Photo Storage S3 Bucket Name
-    Value: !Ref PhotoStorageBucket
-  CloudFrontUrl:
-    Description: CloudFront HTTPS Distribution Domain for Frontend PWA
-    Value: !Sub "https://${FrontendDistribution.DomainName}"
-  FrontendS3BucketName:
+  FrontendBucketName:
     Description: S3 Bucket to host Frontend React PWA static assets
     Value: !Ref FrontendAppBucket
+  DistributionId:
+    Description: CloudFront Distribution ID (used for cache invalidation)
+    Value: !Ref FrontendDistribution
+  CloudFrontDomain:
+    Description: CloudFront HTTPS Distribution Domain Name
+    Value: !GetAtt FrontendDistribution.DomainName
+  PhotoBucketName:
+    Description: Private Photo Storage S3 Bucket Name
+    Value: !Ref PhotoStorageBucket

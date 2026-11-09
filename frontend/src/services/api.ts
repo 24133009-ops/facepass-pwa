@@ -12,7 +12,8 @@ import { INITIAL_CLASSES, INITIAL_STUDENTS, INITIAL_SESSIONS } from './mockData'
 import { generateAttendanceCsv } from '../utils/csvHelper';
 
 const IS_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const RAW_API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '').replace(/\/$/, '');
+const API_BASE_URL = RAW_API_URL ? `${RAW_API_URL}/api` : '/api';
 const COGNITO_REGION = import.meta.env.VITE_COGNITO_REGION || 'ap-southeast-1';
 const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID || '';
 
@@ -676,7 +677,7 @@ export const apiService = {
     if (IS_MOCK) {
       await new Promise((r) => setTimeout(r, 400));
 
-      // Save confirmed session into in-memory mock history with per-student SES status
+      // Save confirmed session into in-memory mock history with per-student email status
       const nowIso = new Date().toISOString();
       const updatedRecords: AttendanceRecord[] = records.map((r) => {
         if (r.status === 'absent') {

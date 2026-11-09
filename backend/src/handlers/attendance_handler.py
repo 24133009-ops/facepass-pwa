@@ -1,5 +1,5 @@
 """
-Attendance scan, manual review confirmation, SES email dispatch, and CSV export.
+Attendance scan, manual review confirmation, Gmail SMTP email dispatch, and CSV export.
 Key Technical Implementations:
 1. Enforces teacher class ownership (403 Forbidden).
 2. Generates presigned POST with content-length-range <= 5MB and Content-Type image/jpeg.
@@ -8,21 +8,29 @@ Key Technical Implementations:
 5. Groups into Present (>=90%), Uncertain (80-90%), Absent, and Unknowns.
 6. Deduplicates by studentId.
 7. Confirmation rule: BLOCKS confirmation if any student is still in 'Uncertain' group.
-8. Anti-duplicate check: Prevents repeated email sending if emailsSentAt is already set.
-9. On confirm: sends SES email warnings to absent students and locks session.
+8. Anti-duplicate check: Prevents repeated email sending with per-student checkpointing and conditional lock.
+9. On confirm: sends absence email warnings to absent students via Gmail SMTP and locks session.
 """
 import json
 import os
 import uuid
 import boto3
-from datetime import datetime
+from botocore.config import Config
+from datetime import datetime, timedelta
 from common.responses import success, error
 from common.auth import get_teacher_id, verify_class_ownership
+from common.log_utils import log_error
 from common import dynamodb as db
 from common import rekognition as rek
 from common import mailer
 
-s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
+AWS_REGION = os.environ.get("AWS_REGION", "ap-southeast-1")
+s3 = boto3.client(
+    "s3",
+    region_name=AWS_REGION,
+    endpoint_url=f"https://s3.{AWS_REGION}.amazonaws.com",
+    config=Config(region_name=AWS_REGION, signature_version="s3v4")
+)
 PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "")
 
 def get_expected_prefix(teacher_id: str, class_id: str) -> str:
@@ -50,6 +58,7 @@ def lambda_handler(event, context):
     class_name = class_info.get("name", "Lớp học")
 
     try:
+        bucket_name = os.environ.get("PHOTO_BUCKET") or PHOTO_BUCKET
         expected_prefix = get_expected_prefix(teacher_id, class_id)
 
         # 1. GET Presigned POST Upload URL for Group Photo (<=5MB, image/jpeg)
@@ -57,7 +66,7 @@ def lambda_handler(event, context):
             sess_uuid = str(uuid.uuid4())[:8]
             s3_key = f"{expected_prefix}{sess_uuid}.jpg"
             presigned_post = s3.generate_presigned_post(
-                Bucket=PHOTO_BUCKET,
+                Bucket=bucket_name,
                 Key=s3_key,
                 Fields={
                     "Content-Type": "image/jpeg"
@@ -225,37 +234,105 @@ def lambda_handler(event, context):
                     400
                 )
 
-            # Filter absent students and dispatch emails with a single reused SMTP connection
-            absent_records = [r for r in confirmed_records if r.get("status") == "absent"]
-            session_time_str = datetime.now().strftime("%H:%M ngày %d/%m/%Y")
+            # Check if any students already had emails sent in a previous partial execution (Anti-duplicate resume)
+            existing_records = db.get_session_attendance(session_id)
+            already_sent_ids = {
+                r["studentId"] for r in existing_records if r.get("emailStatus") == "sent"
+            }
+
             now_iso = datetime.now().isoformat()
+            session_time_str = datetime.now().strftime("%H:%M ngày %d/%m/%Y")
 
-            batch_res = mailer.dispatch_batch_absence_emails(
-                absent_students=absent_records,
-                class_name=class_name,
-                session_time=session_time_str
-            )
-
-            detail_map = {d["studentId"]: d for d in batch_res.get("details", [])}
+            # Initialize states: preserve 'sent' for already dispatched, 'pending' for unsent absent
             for r in confirmed_records:
                 st_id = r.get("studentId")
                 if r.get("status") == "absent":
-                    res_item = detail_map.get(st_id, {})
-                    if res_item.get("success"):
+                    if st_id in already_sent_ids:
                         r["emailStatus"] = "sent"
+                        r["emailSentAt"] = next(
+                            (x.get("emailSentAt") for x in existing_records if x.get("studentId") == st_id),
+                            now_iso
+                        )
                         r["emailError"] = None
-                        r["emailSentAt"] = now_iso
                     else:
-                        r["emailStatus"] = "failed"
-                        r["emailError"] = res_item.get("error") or "Lỗi gửi máy chủ mail"
+                        r["emailStatus"] = "pending"
+                        r["emailError"] = None
                         r["emailSentAt"] = None
                 else:
                     r["emailStatus"] = "none"
                     r["emailError"] = None
                     r["emailSentAt"] = None
 
-            # Save confirmed attendance with per-student delivery status in DynamoDB
+            # Persist initial attendance batch in DynamoDB before network calls
             db.save_attendance_batch(session_id, confirmed_records)
+
+            # Filter absent students who still need email dispatch (skip already sent)
+            unsent_absents = [
+                r for r in confirmed_records if r.get("status") == "absent" and r.get("emailStatus") != "sent"
+            ]
+
+            sent_count = len(already_sent_ids)
+            failed_count = 0
+
+            # Establish single SMTP connection reused across all absent students
+            user, password = mailer.get_gmail_credentials()
+            smtp_server = mailer.create_smtp_connection(user, password) if (user and password) else None
+
+            try:
+                for r in unsent_absents:
+                    st_id = r.get("studentId")
+                    email = r.get("email", "").strip()
+                    name = r.get("fullName", st_id)
+
+                    if not email or "@" not in email:
+                        err_reason = "Email sinh viên không hợp lệ hoặc bị trống"
+                        r["emailStatus"] = "failed"
+                        r["emailError"] = err_reason
+                        r["emailSentAt"] = None
+                        failed_count += 1
+                        # Immediate checkpoint write to DynamoDB
+                        db.update_attendance_email_status(session_id, st_id, "failed", err_reason, None)
+                        continue
+
+                    # ATOMIC CONCURRENCY CHECK: Acquire lock for this student via DynamoDB ConditionExpression
+                    acquired = db.acquire_student_email_lock(session_id, st_id)
+                    if not acquired:
+                        # Another concurrent execution already claimed this student
+                        continue
+
+                    try:
+                        ok, err_msg = mailer.send_absence_warning(
+                            student_email=email,
+                            student_name=name,
+                            student_id=st_id,
+                            class_name=class_name,
+                            session_time=session_time_str,
+                            server=smtp_server
+                        )
+                    except Exception as e:
+                        ok = False
+                        err_msg = f"Lỗi gửi email: {str(e)}"
+
+                    # Immediate checkpoint write to DynamoDB after each individual send
+                    if ok:
+                        r["emailStatus"] = "sent"
+                        r["emailSentAt"] = now_iso
+                        r["emailError"] = None
+                        sent_count += 1
+                        db.update_attendance_email_status(session_id, st_id, "sent", None, now_iso)
+                    else:
+                        err_reason = err_msg or "Lỗi gửi máy chủ mail"
+                        r["emailStatus"] = "failed"
+                        r["emailError"] = err_reason
+                        r["emailSentAt"] = None
+                        failed_count += 1
+                        db.update_attendance_email_status(session_id, st_id, "failed", err_reason, None)
+            finally:
+                if smtp_server:
+                    try:
+                        smtp_server.quit()
+                    except Exception:
+                        pass
 
             # Mark session confirmed and record email dispatch timestamp
             db.mark_session_confirmed(class_id, session_id, emails_sent_at=now_iso)
@@ -263,8 +340,8 @@ def lambda_handler(event, context):
             return success({
                 "message": f"Điểm danh buổi học {session_id} đã được xác nhận chính thức",
                 "sessionStatus": "confirmed",
-                "emailsDispatched": batch_res["success"],
-                "emailsFailed": batch_res["failed"],
+                "emailsDispatched": sent_count,
+                "emailsFailed": failed_count,
                 "records": confirmed_records
             })
 
@@ -291,12 +368,28 @@ def lambda_handler(event, context):
             if target.get("status") != "absent":
                 return error("Sinh viên có mặt, không cần gửi cảnh báo vắng", 400)
 
-            # Strictly only allow retrying if status is failed
+            # Strictly only allow retrying if not already sent
             if target.get("emailStatus") == "sent":
                 return error("Email cho sinh viên này đã được gửi thành công trước đó, không thể gửi lại", 400)
 
-            if target.get("emailStatus") != "failed":
-                return error("Chỉ có thể gửi lại email cho sinh viên có trạng thái gửi thất bại (failed)", 400)
+            # Check if processing and lock is not expired (< 120s)
+            if target.get("emailStatus") == "processing":
+                locked_at_str = target.get("lockedAt")
+                if locked_at_str:
+                    try:
+                        locked_time = datetime.fromisoformat(locked_at_str)
+                        if datetime.now() - locked_time < timedelta(seconds=120):
+                            return error("Email đang được xử lý gửi, vui lòng đợi hết thời hạn khóa (120 giây) trước khi thử lại", 409)
+                    except Exception:
+                        pass
+
+            if target.get("emailStatus") not in ("failed", "processing", "pending"):
+                return error("Chỉ có thể gửi lại email cho sinh viên có trạng thái gửi thất bại (failed) hoặc quá hạn khóa", 400)
+
+            # Atomically acquire lock
+            acquired = db.acquire_student_email_lock(session_id, student_id)
+            if not acquired:
+                return error("Không thể giành khóa gửi email: đang có tiến trình khác xử lý", 409)
 
             email = target.get("email", "").strip()
             name = target.get("fullName", student_id)
@@ -308,13 +401,17 @@ def lambda_handler(event, context):
                 db.update_attendance_email_status(session_id, student_id, "failed", err_msg, None)
                 return error(err_msg, 400)
 
-            ok, err_msg = mailer.send_absence_warning(
-                student_email=email,
-                student_name=name,
-                student_id=student_id,
-                class_name=class_name,
-                session_time=session_time_str
-            )
+            try:
+                ok, err_msg = mailer.send_absence_warning(
+                    student_email=email,
+                    student_name=name,
+                    student_id=student_id,
+                    class_name=class_name,
+                    session_time=session_time_str
+                )
+            except Exception as e:
+                ok = False
+                err_msg = f"Lỗi gửi email: {str(e)}"
 
             if ok:
                 db.update_attendance_email_status(session_id, student_id, "sent", None, now_iso)
@@ -378,5 +475,5 @@ def lambda_handler(event, context):
         return error(f"Unsupported path or method {http_method} {path}", 404)
 
     except Exception as e:
-        print(f"Error in attendance_handler: {str(e)}")
+        log_error("ATTENDANCE_ERROR", e, context)
         return error(str(e), 500)

@@ -13,12 +13,20 @@ Security & Privacy Mandates:
 import json
 import os
 import boto3
+from botocore.config import Config
 from common.responses import success, error
 from common.auth import get_teacher_id, verify_class_ownership
+from common.log_utils import log_error
 from common import dynamodb as db
 from common import rekognition as rek
 
-s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
+AWS_REGION = os.environ.get("AWS_REGION", "ap-southeast-1")
+s3 = boto3.client(
+    "s3",
+    region_name=AWS_REGION,
+    endpoint_url=f"https://s3.{AWS_REGION}.amazonaws.com",
+    config=Config(region_name=AWS_REGION, signature_version="s3v4")
+)
 PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "")
 
 def get_expected_prefix(teacher_id: str, class_id: str) -> str:
@@ -49,11 +57,12 @@ def lambda_handler(event, context):
     expected_prefix = get_expected_prefix(teacher_id, class_id)
 
     try:
+        bucket_name = os.environ.get("PHOTO_BUCKET") or PHOTO_BUCKET
         # 1. GET Presigned POST Upload URL with strict constraints (<=5MB, image/jpeg, prefix-scoped)
         if http_method == "GET":
             s3_key = f"{expected_prefix}{student_id}.jpg"
             presigned_post = s3.generate_presigned_post(
-                Bucket=PHOTO_BUCKET,
+                Bucket=bucket_name,
                 Key=s3_key,
                 Fields={
                     "Content-Type": "image/jpeg"
@@ -114,12 +123,11 @@ def lambda_handler(event, context):
                 # Privacy mandate: ALWAYS DELETE raw photo from S3 (even if error or quality failure occurs)
                 try:
                     s3.delete_object(Bucket=PHOTO_BUCKET, Key=s3_key)
-                    print(f"Purged raw photo in finally block: {s3_key}")
                 except Exception as del_err:
-                    print(f"Warning: Failed to purge S3 object {s3_key} in finally: {str(del_err)}")
+                    log_error("ENROLLMENT_S3_PURGE_WARN", del_err, context)
 
         return error(f"Unsupported method {http_method}", 405)
 
     except Exception as e:
-        print(f"Error in enrollment_handler: {str(e)}")
+        log_error("ENROLLMENT_ERROR", e, context)
         return error(str(e), 500)

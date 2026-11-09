@@ -1,7 +1,7 @@
 """DynamoDB repository layer for Classes, Students, Sessions, and Attendance."""
 import os
 import boto3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 
 dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
@@ -39,8 +39,18 @@ def create_class(class_id: str, name: str, teacher_id: str, collection_id: str) 
         "collectionId": collection_id,
         "createdAt": datetime.now().isoformat()
     }
-    classes_tbl.put_item(Item=item)
+    classes_tbl.put_item(
+        Item=item,
+        ConditionExpression="attribute_not_exists(classId)"
+    )
     return item
+
+def delete_class(class_id: str):
+    """Deletes class record from DynamoDB with conditional existence check."""
+    classes_tbl.delete_item(
+        Key={"classId": class_id},
+        ConditionExpression="attribute_exists(classId)"
+    )
 
 # -----------------------------------------------------------------------------
 # Students Repository
@@ -147,6 +157,42 @@ def update_attendance_email_status(
         UpdateExpression=expr,
         ExpressionAttributeValues=vals
     )
+
+def acquire_student_email_lock(session_id: str, student_id: str, timeout_seconds: int = 120) -> bool:
+    """
+    Atomically acquires email dispatch lock for a student using DynamoDB ConditionExpression.
+    Guarantees that only ONE concurrent request can claim the right to dispatch an email.
+    If a previous execution died leaving emailStatus='processing', allows reclaiming the lock
+    if lockedAt is older than timeout_seconds (default: 120s).
+    """
+    now = datetime.now()
+    now_iso = now.isoformat()
+    cutoff_iso = (now - timedelta(seconds=timeout_seconds)).isoformat()
+    try:
+        attendance_tbl.update_item(
+            Key={"sessionId": session_id, "studentId": student_id},
+            UpdateExpression="SET emailStatus = :proc, lockedAt = :now, updatedAt = :now",
+            ConditionExpression=(
+                "attribute_not_exists(emailStatus) "
+                "OR emailStatus = :pending "
+                "OR emailStatus = :failed "
+                "OR (emailStatus = :proc AND (attribute_not_exists(lockedAt) OR lockedAt < :cutoff))"
+            ),
+            ExpressionAttributeValues={
+                ":proc": "processing",
+                ":pending": "pending",
+                ":failed": "failed",
+                ":cutoff": cutoff_iso,
+                ":now": now_iso
+            }
+        )
+        return True
+    except Exception as e:
+        if hasattr(e, "response") and e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        if "ConditionalCheckFailedException" in str(e):
+            return False
+        raise
 
 def get_session_attendance(session_id: str) -> List[Dict[str, Any]]:
     res = attendance_tbl.query(

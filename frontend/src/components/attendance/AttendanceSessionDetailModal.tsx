@@ -311,6 +311,14 @@ export const AttendanceSessionDetailModal: React.FC<AttendanceSessionDetailModal
                           </p>
                         )}
                       </div>
+                    ) : st.emailStatus === 'processing' ? (
+                      <div className="flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        <RefreshCw className="w-3 h-3 text-blue-600 animate-spin" />
+                        <span>Đang xử lý</span>
+                        {(!st.lockedAt || (Date.now() - new Date(st.lockedAt).getTime() > 120 * 1000)) && (
+                          <span className="text-[10px] text-amber-600 font-semibold">(quá hạn)</span>
+                        )}
+                      </div>
                     ) : (
                       <div className="flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
                         <Clock className="w-3 h-3 text-amber-600" />
@@ -319,8 +327,8 @@ export const AttendanceSessionDetailModal: React.FC<AttendanceSessionDetailModal
                     )}
                   </div>
 
-                  {/* Retry Button: only visible or active if failed or pending */}
-                  {st.emailStatus === 'failed' && (
+                  {/* Retry Button: visible when failed or when processing lock has expired (>120s) */}
+                  {(st.emailStatus === 'failed' || (st.emailStatus === 'processing' && (!st.lockedAt || (Date.now() - new Date(st.lockedAt).getTime() > 120 * 1000)))) && (
                     <button
                       type="button"
                       disabled={retryingId === st.studentId}

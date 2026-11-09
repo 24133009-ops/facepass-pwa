@@ -370,16 +370,20 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
             <Button
               type="button"
               onClick={() => setIsConfirmDialogOpen(true)}
-              disabled={!isUncertainEmpty}
+              disabled={!isUncertainEmpty || isSubmitting}
               size="lg"
               className={
-                isUncertainEmpty
+                isUncertainEmpty && !isSubmitting
                   ? 'bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/30 font-bold'
                   : 'bg-slate-300 cursor-not-allowed'
               }
             >
               <Send className="w-5 h-5 mr-1.5" />
-              <span>Xác Nhận & Gửi Thông Báo ({absentList.length} Vắng)</span>
+              <span>
+                {isSubmitting
+                  ? 'Đang Xác Nhận...'
+                  : `Xác Nhận & Gửi Thông Báo (${absentList.length} Vắng)`}
+              </span>
             </Button>
 
             <Button type="button" variant="outline" onClick={onClose} size="lg">
@@ -401,7 +405,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
               <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
               <p className="font-bold text-emerald-950 text-sm">Điểm danh đã được khóa thành công!</p>
               <p className="text-xs text-emerald-800">
-                Đã gửi thông báo cảnh báo qua Amazon SES tới <strong>{confirmResult.emailsDispatched}</strong> sinh viên vắng mặt.
+                Đã gửi thông báo cảnh báo tới máy chủ mail cho <strong>{confirmResult.emailsDispatched}</strong> sinh viên vắng mặt.
               </p>
             </div>
           ) : (
@@ -437,7 +441,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
               <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
                 <Mail className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
-                  <strong className="text-amber-950">Lưu ý về gửi thông báo SES:</strong> Hệ thống sẽ tự động gửi email cảnh báo vắng học cá nhân hóa tới <strong>{absentList.length} sinh viên vắng mặt</strong> (mỗi email gửi riêng lẻ, chống rò rỉ danh sách).
+                  <strong className="text-amber-950">Lưu ý về gửi thông báo:</strong> Hệ thống sẽ tự động gửi email cảnh báo vắng học cá nhân hóa tới <strong>{absentList.length} sinh viên vắng mặt</strong> (mỗi email gửi riêng lẻ, chống rò rỉ danh sách).
                 </div>
               </div>
 
@@ -447,6 +451,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                   variant="primary"
                   onClick={handleConfirmAndSend}
                   isLoading={isSubmitting}
+                  disabled={isSubmitting}
                   size="lg"
                   className="font-bold shadow-md shadow-blue-600/30"
                 >
