@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # FacePass PWA - Preflight Verification Script (READ-ONLY)
 #
 # PURPOSE:
@@ -155,9 +155,9 @@ if ($SkipAws) {
             $maskedAcct = "****" + $acct.Substring([Math]::Max(0, $acct.Length - 4))
 
             if ($arn -like "*:root") {
-                Write-Fail "AWS Identity" "ARN is '$arn' (ROOT account)! Dedicated IAM user with MFA is required."
+                Write-Fail "AWS Identity" "ARN is '$arn' (ROOT account)! Use AWS Academy Sandbox credentials."
             } else {
-                Write-Pass "AWS IAM User" "ARN: $arn (Account: $maskedAcct)"
+                Write-Pass "AWS Identity" "ARN: $arn (Account: $maskedAcct)"
             }
         } catch {
             Write-Fail "AWS Identity Parse" "Failed to parse JSON from sts get-caller-identity"
@@ -171,13 +171,13 @@ if ($SkipAws) {
     $regionRaw = (aws configure get region $profileArg 2>&1)
     if ($regionRaw) {
         $currentRegion = $regionRaw.Trim()
-        if ($currentRegion -eq "ap-southeast-1") {
-            Write-Pass "AWS Region" "Matches required region 'ap-southeast-1' (Singapore)"
+        if ($currentRegion -eq "us-east-1") {
+            Write-Pass "AWS Region" "Matches required region 'us-east-1' (N. Virginia)"
         } else {
-            Write-Fail "AWS Region" "Current region is '$currentRegion' (expected ap-southeast-1)"
+            Write-Fail "AWS Region" "Current region is '$currentRegion' (expected us-east-1)"
         }
     } else {
-        Write-Warn "AWS Region" "Region not detected from profile. Deploy template will prompt for ap-southeast-1."
+        Write-Warn "AWS Region" "Region not detected from profile. Deploy template will prompt for us-east-1."
     }
     Write-Host ""
 
@@ -265,13 +265,13 @@ if ($samConfigTracked) {
 Write-Host ""
 
 # ==============================================================================
-# Part E: Manual Security Reminders (Developer Checklist)
+# Part E: Manual Security Reminders (AWS Academy Sandbox Checklist)
 # ==============================================================================
-Write-Host ">>> [E] Manual Security Reminders (Developer Checklist):" -ForegroundColor Cyan
-Write-Host "  [i] [ ] Dedicated IAM user has Multi-Factor Authentication (MFA) enabled." -ForegroundColor Yellow
-Write-Host "  [i] [ ] Real alert email is prepared for AlertNotificationEmail budget parameter." -ForegroundColor Yellow
-Write-Host "  [i] [ ] 'Activate IAM Access' is enabled in Billing Information (via root account)." -ForegroundColor Yellow
-Write-Host "  [i] [ ] Remember to set Access Key to Inactive when idle, and Delete when finished." -ForegroundColor Yellow
+Write-Host ">>> [E] Manual Security Reminders (AWS Academy Sandbox Checklist):" -ForegroundColor Cyan
+Write-Host "  [i] [ ] AWS Academy Sandbox active in us-east-1 (N. Virginia)." -ForegroundColor Yellow
+Write-Host "  [i] [ ] Session credentials valid up to 180 mins (restart lab and update CLI keys when expired)." -ForegroundColor Yellow
+Write-Host "  [i] [ ] Lambda functions configured to use LabRole (arn:aws:iam::\${AWS::AccountId}:role/LabRole)." -ForegroundColor Yellow
+Write-Host "  [i] [ ] Never paste AWS keys or App Passwords into chat or git repository." -ForegroundColor Yellow
 Write-Host ""
 
 # ==============================================================================

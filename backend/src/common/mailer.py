@@ -18,7 +18,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from common.validators import is_valid_email
 from common.log_utils import log_error
 
-ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
+ssm = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))

@@ -2,7 +2,7 @@
 
 Ứng dụng Progressive Web App (PWA) di động hỗ trợ Giảng viên điểm danh sinh viên bằng nhận diện khuôn mặt đa đối tượng trên ảnh tập thể góc rộng, tích hợp cảnh báo vắng học tự động qua **SMTP Gmail** với thông tin xác thực lưu trữ bảo mật trong **AWS Systems Manager (SSM) Parameter Store (SecureString)**.
 
-- **Khu vực triển khai (Region):** `ap-southeast-1` (Singapore)
+- **Khu vực triển khai (Region):** `us-east-1` (N. Virginia)
 - **Kiến trúc Serverless:** AWS SAM, HTTP API Gateway v2, Lambda (Python 3.12), Amazon Rekognition, DynamoDB (On-Demand), S3 (SSE-S3 AES-256), Amazon Cognito User Pool, CloudFront CDN, SSM Parameter Store (Gmail SMTP), React 18, Vite, TypeScript, Tailwind CSS, PWA Service Worker.
 
 ---
@@ -32,7 +32,7 @@ facepass-pwa/
 
 ---
 
-## 🛠️ Chuẩn Bị Trước Khi Deploy (Các Bước Thực Hiện Thủ Công)
+## 🛠️ Chuẩn Bị Trước Khi Deploy (Chạy Trên AWS Academy Sandbox)
 
 Trước khi thực hiện lệnh deploy, bạn cần tự chuẩn bị tài khoản và môi trường trên máy tính và trên AWS Management Console theo các bước sau:
 
@@ -41,36 +41,32 @@ Trước khi thực hiện lệnh deploy, bạn cần tự chuẩn bị tài kho
 - **Tài khoản Gmail riêng:** Tuyệt đối không dùng tài khoản Gmail cá nhân chính chứa dữ liệu nhạy cảm. Hãy tạo một tài khoản Gmail riêng cho ứng dụng.
 - **Bật Xác minh 2 bước:** Truy cập Google Account -> mục **Bảo mật (Security)** -> bật **Xác minh 2 bước (2-Step Verification)**.
 - **Tạo App Password:** Vào mục **Mật khẩu ứng dụng (App passwords)** -> Tạo mật khẩu ứng dụng mới cho FacePass (chuỗi 16 ký tự).
-- **Lưu vào Parameter Store Console (Vùng Singapore):**
-  > ⚠️ **LƯU Ý QUAN TRỌNG:** Hãy chắc chắn bạn đã chọn đúng vùng **Singapore (`ap-southeast-1`)** ở thanh điều hướng trên cùng của AWS Management Console trước khi tạo tham số.
+- **Lưu vào Parameter Store Console (Vùng N. Virginia - `us-east-1`):**
+  > ⚠️ **LƯU Ý QUAN TRỌNG:** Hãy chắc chắn bạn đã chọn đúng vùng **N. Virginia (`us-east-1`)** ở thanh điều hướng trên cùng của AWS Management Console trước khi tạo tham số.
   - Tìm dịch vụ **Systems Manager** -> chọn mục **Parameter Store** (menu bên trái).
   - Tạo 2 tham số với Tier **Standard**, Type **`SecureString`** (KMS key: `alias/aws/ssm`):
     1. **Tham số 1:** Name: `/facepass/gmail/username` | Value: Địa chỉ Gmail của bạn (ví dụ: `teacher.facepass@gmail.com`).
     2. **Tham số 2:** Name: `/facepass/gmail/app_password` | Value: Dán trực tiếp chuỗi 16 ký tự App Password vừa tạo (viết liền không khoảng trắng).
-  - **Nguyên tắc bảo mật:** Dán mật khẩu trực tiếp vào AWS Console; không gõ mật khẩu vào terminal và không lưu vào bất kỳ file nào trong dự án.
+  - **Nguyên tắc bảo mật:** Dán mật khẩu trực tiếp vào AWS Console; không gõ mật khẩu vào terminal, không lưu vào bất kỳ file nào trong dự án, và tuyệt đối không dán mật khẩu vào chat.
 
-### 2. Thiết Lập Tài Khoản IAM User Riêng Biệt (Không Dùng Root)
-- **Tuyệt đối không dùng tài khoản Root** để thao tác hoặc triển khai hạ tầng.
-- Tạo một IAM User riêng dành cho việc triển khai dự án môn học (ví dụ: `facepass-deployer`) với quyền quản trị cần thiết (`AdministratorAccess`).
-- **Bắt buộc bật xác thực đa yếu tố (MFA)** trên tài khoản IAM này.
-- Tạo Access Key (Access Key ID và Secret Access Key) phục vụ cấu hình CLI.
-- **Chính sách Access Key thống nhất:** Đặt trạng thái **Inactive** trên AWS IAM Console khi tạm dừng hoặc không dùng; và **Xóa vĩnh viễn (Delete)** ngay sau khi hoàn tất dọn dẹp hạ tầng môn học để triệt tiêu mọi rủi ro lộ lọt thông tin xác thực.
+### 2. Thiết Lập Môi Trường AWS Academy Sandbox (Thông Tin Xác Thực Tạm Thời)
+- **Vùng hoạt động cố định:** AWS Academy Learner Lab hoạt động cố định tại vùng **`us-east-1` (N. Virginia)**.
+- **Khởi động Lab:** Trong giao diện AWS Academy, bấm nút **Start Lab** và chờ đến khi biểu tượng trạng thái chuyển sang màu xanh (Ready).
+- **Lấy thông tin xác thực AWS CLI:**
+  1. Bấm vào nút **AWS Details** ở phía trên giao diện Lab.
+  2. Tại dòng **AWS CLI**, bấm **Show** để hiển thị cấu hình credentials tạm thời (gồm `aws_access_key_id`, `aws_secret_access_key`, và `aws_session_token`).
+  3. Sao chép và dán cấu hình này vào file `~/.aws/credentials` trên máy của bạn (dưới profile `[default]` hoặc profile riêng `[facepass]`), hoặc gán trực tiếp vào biến môi trường PowerShell:
+     ```powershell
+     $env:AWS_ACCESS_KEY_ID = "<Dán aws_access_key_id>"
+     $env:AWS_SECRET_ACCESS_KEY = "<Dán aws_secret_access_key>"
+     $env:AWS_SESSION_TOKEN = "<Dán aws_session_token>"
+     $env:AWS_DEFAULT_REGION = "us-east-1"
+     ```
+- **Thời hạn khóa tạm thời (180 phút):** Khóa xác thực tạm thời của AWS Academy có hiệu lực tối đa **180 phút (3 giờ)**. Khi hết thời gian phiên làm việc hoặc mỗi lần Start Lab lại, bạn cần lấy bộ khóa tạm mới từ "AWS Details" và cập nhật lại CLI.
+- **Quy tắc an toàn bảo mật:** Tuyệt đối **không dán Access Key, Secret Key hay Session Token vào chat** và không commit bất kỳ thông tin nào vào repository.
+- **Sử dụng IAM Role `LabRole`:** Môi trường AWS Academy Sandbox chặn toàn bộ quyền tạo mới IAM Role (`iam:CreateRole`). Toàn bộ 4 hàm Lambda trong backend đã được cấu hình trỏ thẳng tới Role có sẵn của Sandbox: `arn:aws:iam::${AWS::AccountId}:role/LabRole`.
 
-### 3. Cấu Hình AWS CLI Profile Riêng (`facepass`)
-Chạy lệnh cấu hình profile riêng trong PowerShell để tránh ghi đè thông tin xác thực mặc định trên máy của bạn:
-```powershell
-aws configure --profile facepass
-# AWS Access Key ID: <Dán Access Key ID của IAM User>
-# AWS Secret Access Key: <Dán Secret Access Key của IAM User>
-# Default region name: ap-southeast-1
-# Default output format: json
-```
-Thiết lập profile hoạt động cho phiên làm việc hiện tại của PowerShell:
-```powershell
-$env:AWS_PROFILE = "facepass"
-```
-
-### 4. Mở Docker Desktop & Kiểm Tra Daemon
+### 3. Mở Docker Desktop & Kiểm Tra Daemon
 Quá trình build thư viện xử lý ảnh `Pillow` cho Lambda bắt buộc phải biên dịch trong container Linux x86_64:
 - Mở ứng dụng **Docker Desktop** trên Windows và chờ daemon khởi động hoàn tất.
 - Kiểm tra trạng thái daemon bằng lệnh:
@@ -79,17 +75,7 @@ Quá trình build thư viện xử lý ảnh `Pillow` cho Lambda bắt buộc ph
   ```
   Nếu lệnh trả về danh sách container mà không báo lỗi kết nối daemon, Docker đã sẵn sàng.
 
-### 5. Chuẩn Bị Email Cảnh Báo Ngân Sách & Xử Lý Lỗi AccessDenied ở AWS Budget
-- Chuẩn bị một email thật đang hoạt động để nhập vào tham số `AlertNotificationEmail` khi `sam deploy --guided` (ngưỡng cảnh báo chi phí $4.00, tương ứng 80% hạn mức $5.00/tháng).
-- **Lưu ý lỗi `AccessDenied` khi CloudFormation tạo tài nguyên Budget (`MonthlyCostBudget`):**
-  Theo chính sách bảo mật mặc định của AWS, các IAM User (kể cả có quyền `AdministratorAccess`) không có quyền xem hoặc tạo cấu hình Billing & Budgets trừ khi được tài khoản Root cấp quyền. Nếu CloudFormation báo lỗi `AccessDenied` ở tài nguyên `MonthlyCostBudget`:
-  1. Đăng nhập AWS Management Console bằng **tài khoản Root**.
-  2. Bấm vào tên tài khoản ở góc trên cùng bên phải -> chọn **Account**.
-  3. Cuộn xuống mục **IAM User and Role Access to Billing Information** -> bấm **Edit**.
-  4. Tích chọn **Activate IAM Access** -> bấm **Update**.
-  5. Sau khi kích hoạt, IAM User của bạn có thể tạo và quản lý AWS Budget bình thường mà không gặp lỗi phân quyền.
-
-### 6. Chạy Kịch Bản Kiểm Tra Toàn Diện Trước Khi Triển Khai (`preflight.ps1`)
+### 4. Chạy Kịch Bản Kiểm Tra Toàn Diện Trước Khi Triển Khai (`preflight.ps1`)
 Chạy kịch bản kiểm tra tự động ở chế độ CHỈ ĐỌC để rà soát toàn bộ công cụ, thẩm quyền IAM, tham số SSM, và an toàn mã nguồn:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\preflight.ps1
@@ -123,12 +109,10 @@ Các tham số dưới đây được sinh trực tiếp từ khối `Parameters
 | Tham Số / Câu Hỏi | Kiểu Dữ Liệu | Giá Trị Mặc Định | Ý Nghĩa Nghiệp Vụ & Giá Trị Gợi Ý |
 | :--- | :---: | :---: | :--- |
 | **Stack Name** | String | `facepass-pwa-prod` | Tên của CloudFormation Stack quản lý toàn bộ tài nguyên. Gợi ý: nhập `facepass-pwa-prod`. |
-| **AWS Region** | String | `ap-southeast-1` | Khu vực AWS đặt hạ tầng máy chủ. Gợi ý: nhập `ap-southeast-1` (Singapore). |
+| **AWS Region** | String | `us-east-1` | Khu vực AWS đặt hạ tầng máy chủ. Gợi ý: nhập `us-east-1` (N. Virginia). |
 | **Parameter Stage** | String (`[dev, staging, prod]`) | `prod` | Môi trường hệ thống. Gợi ý: chọn `prod`. |
-| **Parameter AlertNotificationEmail** | String | *(Bắt buộc nhập)* | Địa chỉ email nhận cảnh báo chi phí AWS Budgets. **Không có mặc định giả**; bạn bắt buộc phải nhập email thật của mình. |
-| **Parameter BudgetLimitUSD** | Number | `5` | Hạn mức chi tiêu hàng tháng (USD). Gợi ý: nhập `5` (cảnh báo kích hoạt tại 80% tức $4.00; dịch vụ không tự ngắt). |
 | **Confirm changes before deploy** | Y/n | `Y` | Hiển thị bảng ChangeSet để bạn rà soát các tài nguyên trước khi tạo thật. Gợi ý: `Y`. |
-| **Allow SAM CLI IAM role creation** | Y/n | `Y` | Cho phép SAM CLI tự động tạo các IAM Role với đặc quyền tối thiểu cho Lambda. Gợi ý: `Y`. |
+| **Allow SAM CLI IAM role creation** | Y/n | `Y` | Cho phép SAM CLI quản lý role (mọi Lambda function đều dùng role LabRole có sẵn). Gợi ý: `Y`. |
 | **Disable rollback** | y/N | `N` | Giữ nguyên cơ chế tự động hoàn tác (rollback) nếu có lỗi xảy ra trong quá trình deploy. Gợi ý: `N`. |
 | **Save arguments to configuration file** | Y/n | `Y` | Lưu các tham số đã chọn vào file `samconfig.toml` cho các lần deploy sau. Gợi ý: `Y`. |
 | **SAM configuration file** | String | `samconfig.toml` | Tên file lưu cấu hình. Gợi ý: nhấn **Enter** để nhận mặc định. |
@@ -139,8 +123,8 @@ SAM CLI kiểm tra tĩnh ở cấp từng event của Lambda Function. Trong `te
 
 ### Bước 3.3: Thu Thập Các Giá Trị Output Sau Khi Deploy
 Sau khi lệnh deploy hoàn tất thành công, bảng `Outputs` của CloudFormation sẽ hiển thị:
-- `ApiUrl`: Địa chỉ gốc của API Gateway (ví dụ: `https://a1b2c3d4.execute-api.ap-southeast-1.amazonaws.com`).
-- `UserPoolId`: ID của Cognito User Pool (ví dụ: `ap-southeast-1_ABC123xyz`).
+- `ApiUrl`: Địa chỉ gốc của API Gateway (ví dụ: `https://a1b2c3d4.execute-api.us-east-1.amazonaws.com`).
+- `UserPoolId`: ID của Cognito User Pool (ví dụ: `us-east-1_ABC123xyz`).
 - `UserPoolClientId`: ID của Cognito App Client không dùng secret (ví dụ: `1a2b3c4d5e6f7g8h9i0j`).
 - `FrontendBucketName`: Tên bucket S3 lưu trữ bản build giao diện (ví dụ: `facepass-frontend-123456789012-prod`).
 - `DistributionId`: ID của CloudFront Distribution dùng để xóa cache (ví dụ: `E1A2B3C4D5E6F7`).
@@ -150,7 +134,7 @@ Sau khi lệnh deploy hoàn tất thành công, bảng `Outputs` của CloudForm
 Chạy khối lệnh sau trong PowerShell để kiểm tra toàn bộ 14 tuyến đường được khai báo trong template. **Tất cả 14 dòng bắt buộc phải trả về mã `401`**. Nếu có bất kỳ dòng nào ra mã khác (200, 404, 500...), script sẽ dừng lại và báo lỗi để kiểm tra ngay:
 
 ```powershell
-$API_URL = "https://a1b2c3d4.execute-api.ap-southeast-1.amazonaws.com" # Thay bằng ApiUrl của bạn
+$API_URL = "https://a1b2c3d4.execute-api.us-east-1.amazonaws.com" # Thay bằng ApiUrl của bạn
 $routes = @(
   @("GET","/api/classes"), @("POST","/api/classes"), @("GET","/api/classes/cls-01"),
   @("GET","/api/classes/cls-01/students"), @("POST","/api/classes/cls-01/students"),
@@ -182,7 +166,7 @@ foreach ($r in $routes) {
 
 Để đảm bảo tính bảo mật và kiểm soát truy cập, Cognito User Pool được cấu hình chặn tự do đăng ký:
 
-> ⚠️ **LƯU Ý:** Đảm bảo bạn đang ở Region **Singapore (`ap-southeast-1`)** trên AWS Console.
+> ⚠️ **LƯU Ý:** Đảm bảo bạn đang ở Region **N. Virginia (`us-east-1`)** trên AWS Console.
 
 1. Vào AWS Console -> chọn dịch vụ **Amazon Cognito** -> chọn mục **User Pools**.
 2. Nhấn chọn User Pool có tên `facepass-pwa-users-prod`.
@@ -209,8 +193,8 @@ Set-Location -Path C:\dev\facepass-pwa\frontend
 Tạo file `.env.production.local` và điền các giá trị thực tế lấy từ Outputs ở Bước 3.3:
 ```ini
 VITE_USE_MOCK=false
-VITE_API_URL=https://a1b2c3d4.execute-api.ap-southeast-1.amazonaws.com
-VITE_COGNITO_REGION=ap-southeast-1
+VITE_API_URL=https://a1b2c3d4.execute-api.us-east-1.amazonaws.com
+VITE_COGNITO_REGION=us-east-1
 VITE_COGNITO_CLIENT_ID=1a2b3c4d5e6f7g8h9i0j
 ```
 
@@ -246,7 +230,7 @@ $DISTRIBUTION_ID = "E1A2B3C4D5E6F7"                     # Thay bằng Distributi
 $CLOUDFRONT_DOMAIN = "d123456abcdef8.cloudfront.net"    # Thay bằng CloudFrontDomain từ Outputs
 
 # 1. Đồng bộ toàn bộ nội dung thư mục dist/ lên S3 Frontend Bucket
-aws s3 sync dist/ "s3://$FRONTEND_BUCKET" --delete --region ap-southeast-1
+aws s3 sync dist/ "s3://$FRONTEND_BUCKET" --delete --region us-east-1
 
 # 2. Xóa cache CloudFront để người dùng nhận ngay bản cập nhật mới nhất
 aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
@@ -304,7 +288,7 @@ sam logs -n ClassesFunction --stack-name facepass-pwa-prod --tail
 
 1. **Gmail chặn đăng nhập (`535 5.7.8 Authentication credentials invalid`):**
    - *Nguyên nhân:* Mật khẩu ứng dụng (App Password) bị nhập sai, bị thu hồi trên Google Account, hoặc tài khoản Gmail chưa bật Xác minh 2 bước.
-   - *Cách khắc phục:* Vào lại Google Account -> Bảo mật -> Tạo lại App Password 16 ký tự mới. Vào AWS Systems Manager Parameter Store tại Region `ap-southeast-1`, chỉnh sửa lại giá trị tham số `/facepass/gmail/app_password`.
+   - *Cách khắc phục:* Vào lại Google Account -> Bảo mật -> Tạo lại App Password 16 ký tự mới. Vào AWS Systems Manager Parameter Store tại Region `us-east-1`, chỉnh sửa lại giá trị tham số `/facepass/gmail/app_password`.
 2. **Google chặn đăng nhập từ IP máy chủ lạ (AWS Lambda):**
    - *Nguyên nhân:* Google phát hiện kết nối SMTP xuất phát từ dải IP của AWS Datacenter và tạm thời gắn cờ bảo mật.
    - *Cách khắc phục:* Đăng nhập vào chính hộp thư Gmail của tài khoản gửi (trên web), tìm email cảnh báo bảo mật từ Google ("Đã chặn nỗ lực đăng nhập"), bấm vào đường dẫn và chọn **"Đúng là tôi"** để xác nhận cấp quyền cho IP của Lambda.
@@ -375,11 +359,11 @@ Khi kiểm tra logs JSON qua `sam logs`, sử dụng bảng sau để xác đị
 
 | Mã Lỗi (`awsErrorCode` / Exception) | Ngữ Cảnh (`awsOperation` / Thành Phần) | Nguyên Nhân Cốt Lõi | Cách Khắc Phục Chi Tiết |
 | :--- | :--- | :--- | :--- |
-| `AccessDeniedException` | `DetectFaces`, `IndexFaces`, `SearchFacesByImage` | IAM Role của Lambda Function thiếu quyền thao tác Rekognition. | Kiểm tra `backend/template.yaml` tại `EnrollmentFunction` hoặc `AttendanceFunction` xem IAM statement cho Rekognition đã áp dụng đúng chưa. |
-| `ParameterNotFound` | `GetParameters` (SSM Parameter Store) | Sai tên tham số hoặc sai Region. | Kiểm tra xem 2 tham số `/facepass/gmail/username` và `/facepass/gmail/app_password` đã được tạo đúng tại vùng **Singapore (`ap-southeast-1`)** hay chưa. |
-| `SMTPAuthenticationError` / `535 5.7.8` | `server.login` (SMTP Gmail) | Mật khẩu ứng dụng (App Password) sai hoặc tài khoản chưa bật 2FA. | Tạo lại App Password 16 ký tự mới trên Google Account, cập nhật lại tham số `/facepass/gmail/app_password` trong Parameter Store. |
+| `AccessDeniedException` | `DetectFaces`, `IndexFaces`, `SearchFacesByImage` | Thiếu quyền thao tác Rekognition hoặc LabRole chưa sẵn sàng. | Kiểm tra xem hàm Lambda đã cấu hình đúng `Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"` chưa và phiên Lab có đang hoạt động không. |
+| `ParameterNotFound` | `GetParameters` (SSM Parameter Store) | Sai tên tham số hoặc sai Region. | Kiểm tra xem 2 tham số `/facepass/gmail/username` và `/facepass/gmail/app_password` đã được tạo đúng tại vùng **N. Virginia (`us-east-1`)** hay chưa. |
+| `SMTPAuthenticationError` / `535 5.7.8` | `server.login` (SMTP Gmail) | Mật khẩu ứng dụng (App Password) sai hoặc tài khoản chưa bật 2FA. | Tạo lại App Password 16 ký tự mới trên Google Account, cập nhật lại tham số `/facepass/gmail/app_password` trong Parameter Store tại `us-east-1`. |
 | `ResourceNotFoundException` | `SearchFacesByImage` / `DeleteFaces` | Thiếu Rekognition Collection của lớp học. | Lớp học chưa được tạo đúng quy trình hoặc collection `facepass-<classId>` đã bị xóa thủ công. Hãy tạo lớp học mới trên giao diện. |
-| Lỗi CORS khi upload ảnh (`CORS error` / `403 Forbidden`) | Presigned POST lên S3 | URL Presigned POST thiếu hoặc sai tên Region (`ap-southeast-1`). | Đảm bảo client S3 trong handler khởi tạo với `Config(region_name=AWS_REGION, signature_version="s3v4")` và `endpoint_url="https://s3.ap-southeast-1.amazonaws.com"`. |
+| Lỗi CORS khi upload ảnh (`CORS error` / `403 Forbidden`) | Presigned POST lên S3 | URL Presigned POST thiếu hoặc sai tên Region (`us-east-1`). | Đảm bảo client S3 trong handler khởi tạo với `Config(region_name=AWS_REGION, signature_version="s3v4")` và `endpoint_url="https://s3.us-east-1.amazonaws.com"`. |
 | `HTTP 429 Too Many Requests` | API Gateway Rate Limiting | Vượt quá giới hạn Throttling `20/10` (Burst 20, Rate 10 req/s). | Throttling đang bảo vệ hệ thống khỏi quá tải. **Giao diện (UI) hiển thị thông báo: "Hệ thống đang bận, vui lòng thử lại sau giây lát"** thay vì báo lỗi chung. |
 
 ---
@@ -392,10 +376,10 @@ Khi môn học kết thúc hoặc không còn nhu cầu sử dụng, để đưa
 Liệt kê và xóa các collection nhận diện khuôn mặt của các lớp:
 ```powershell
 # Liệt kê danh sách collections
-aws rekognition list-collections --region ap-southeast-1
+aws rekognition list-collections --region us-east-1
 
 # Xóa từng collection (ví dụ: facepass-cls-01)
-aws rekognition delete-collection --collection-id "facepass-cls-01" --region ap-southeast-1
+aws rekognition delete-collection --collection-id "facepass-cls-01" --region us-east-1
 ```
 
 ### Bước 2: Làm Rỗng 2 S3 Bucket (Kiểm tra Versioning)
@@ -405,15 +389,15 @@ CloudFormation sẽ không thể xóa S3 Bucket nếu bên trong bucket còn ch�
 $FRONTEND_BUCKET = "facepass-frontend-123456789012-prod"
 $PHOTO_BUCKET = "facepass-photos-123456789012-prod"
 
-aws s3 rm "s3://$FRONTEND_BUCKET" --recursive --region ap-southeast-1
-aws s3 rm "s3://$PHOTO_BUCKET" --recursive --region ap-southeast-1
+aws s3 rm "s3://$FRONTEND_BUCKET" --recursive --region us-east-1
+aws s3 rm "s3://$PHOTO_BUCKET" --recursive --region us-east-1
 ```
 > **Lưu ý về Bucket Versioning:** Nếu bạn đã bật thủ công tính năng Versioning trên AWS Console, lệnh `s3 rm` thông thường chỉ tạo delete-marker và không xóa sạch các phiên bản cũ. Trong trường hợp đó, bạn vào AWS S3 Console -> chọn từng bucket -> nhấn nút **Empty** -> gõ chữ *permanently delete* để xóa sạch toàn bộ các phiên bản.
 
 ### Bước 3: Xóa 2 Tham Số SSM Parameter Store
 ```powershell
-aws ssm delete-parameter --name "/facepass/gmail/username" --region ap-southeast-1
-aws ssm delete-parameter --name "/facepass/gmail/app_password" --region ap-southeast-1
+aws ssm delete-parameter --name "/facepass/gmail/username" --region us-east-1
+aws ssm delete-parameter --name "/facepass/gmail/app_password" --region us-east-1
 ```
 
 ### Bước 4: Xóa Các CloudWatch Log Groups
@@ -431,7 +415,7 @@ $FUNCTIONS = @(
 )
 
 foreach ($fn in $FUNCTIONS) {
-  aws logs delete-log-group --log-group-name "/aws/lambda/$fn" --region ap-southeast-1 2>$null
+  aws logs delete-log-group --log-group-name "/aws/lambda/$fn" --region us-east-1 2>$null
 }
 ```
 
@@ -441,25 +425,24 @@ Trong `backend/template.yaml`, toàn bộ các tài nguyên DynamoDB, Cognito, A
 Thực hiện xóa toàn bộ hạ tầng:
 ```powershell
 Set-Location -Path C:\dev\facepass-pwa\backend
-sam delete --stack-name facepass-pwa-prod --region ap-southeast-1 --no-prompts
+sam delete --stack-name facepass-pwa-prod --region us-east-1 --no-prompts
 ```
 
 ### Bước 6: Kiểm Tra Xác Nhận Cuối Cùng
 Chạy lệnh kiểm tra xác nhận stack đã biến mất khỏi CloudFormation:
 ```powershell
-aws cloudformation describe-stacks --stack-name facepass-pwa-prod --region ap-southeast-1
+aws cloudformation describe-stacks --stack-name facepass-pwa-prod --region us-east-1
 ```
 > **Kết quả mong đợi:** AWS CLI trả về thông báo lỗi:  
 > `ValidationError: Stack with id facepass-pwa-prod does not exist.`  
 >
 > ⚠️ **Khuyến nghị tài chính:** Hãy **kiểm tra lại trang AWS Billing & Cost Management sau 1–2 ngày** để chắc chắn chi phí đã dừng phát sinh từ bất kỳ dịch vụ hay tài nguyên ngầm nào.
 
-### Bước 7: Xóa Vĩnh Viễn AWS Access Key
-Để triệt tiêu hoàn toàn mọi rủi ro rò rỉ thông tin xác thực sau khi hoàn thành môn học:
-1. Đăng nhập AWS IAM Console -> chọn mục **Users** -> bấm vào user của bạn (`facepass-deployer`).
-2. Chuyển sang tab **Security credentials** -> cuộn xuống mục **Access keys**.
-3. Bấm vào nút hành động của Access Key -> chọn **Delete** để xóa vĩnh viễn key.
-*(Chính sách thống nhất: Đặt **Inactive** khi tạm dừng/không sử dụng, và **Xóa vĩnh viễn (Delete)** ngay sau khi hoàn tất dọn dẹp).*
+### Bước 7: Kết Thúc Phiên Học AWS Academy
+Để hoàn tất dọn dẹp và giải phóng tài nguyên phiên thực hành:
+1. Quay lại trang AWS Academy Learner Lab.
+2. Bấm nút **End Lab** để kết thúc phiên và đóng môi trường thực hành.
+*(Khóa tạm thời của AWS Academy tự động hết hiệu lực sau tối đa 180 phút).*
 
 ---
 
@@ -482,13 +465,12 @@ aws cloudformation describe-stacks --stack-name facepass-pwa-prod --region ap-so
 
 ---
 
-## 🔒 11. Báo Cáo Rà Soát IAM & Quyền Hạn Tối Thiểu (Least Privilege)
+## 🔒 11. Báo Cáo Rà Soát Quyền Hạn AWS Academy Sandbox (LabRole)
 
-Toàn bộ các tài nguyên và IAM Statement trong `backend/template.yaml` tuân thủ nguyên tắc đặc quyền tối thiểu. `Resource: "*"` chỉ xuất hiện ở đúng **3 vị trí bắt buộc theo đặc tả kỹ thuật của AWS**:
-1. **`EnrollmentFunction` - `rekognition:DetectFaces`:** Theo tài liệu *AWS Service Authorization Reference*, action `DetectFaces` thao tác trực tiếp trên dữ liệu byte ảnh thô và không hỗ trợ phân quyền ở cấp độ collection (`Resource-level permissions: None`), bắt buộc phải dùng `Resource: "*"`.
-2. **`AttendanceFunction` - `rekognition:DetectFaces`:** Tương tự như trên, dùng để phát hiện và định vị các khuôn mặt trong ảnh tập thể trước khi cắt ảnh.
-3. **`AttendanceFunction` - `kms:Decrypt`:** Cho phép giải mã tham số mật khẩu ứng dụng Gmail SecureString từ AWS Systems Manager Parameter Store. Khi sử dụng khóa mặc định do AWS quản lý (`aws/ssm`), IAM bắt buộc khai báo `Resource: "*"` và được thắt chặt bảo mật bằng điều kiện kiểm soát dịch vụ:  
-   `Condition: { StringEquals: { kms:ViaService: "ssm.<region>.amazonaws.com" } }`.
+Trong môi trường **AWS Academy Sandbox**, tài khoản học viên bị hạn chế quyền tạo mới IAM Role hoặc IAM Policy (`iam:CreateRole`, `iam:PutRolePolicy`). Do đó, toàn bộ 4 hàm Lambda trong `backend/template.yaml` được cấu hình sử dụng trực tiếp IAM Role mặc định do AWS Academy cấp sẵn:  
+`Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"`
+
+Role `LabRole` này đã được AWS Academy gán sẵn đầy đủ các quyền hạn cần thiết để các Lambda Function thao tác với Amazon DynamoDB, Amazon Rekognition, Amazon S3, và AWS Systems Manager (SSM) Parameter Store (`GetParameters`).
 
 **Cấu hình giới hạn tốc độ (API Gateway Throttling):**
 `HttpApiGateway` được thiết lập `DefaultRouteSettings` ở cấp Stage `$default` với `ThrottlingRateLimit: 10` (requests/s) và `ThrottlingBurstLimit: 20` để chống tấn công từ chối dịch vụ (DoS), đồng thời không đặt `ReservedConcurrentExecutions` trên Lambda để tránh lỗi cạn kiệt quota trên các tài khoản AWS mới.

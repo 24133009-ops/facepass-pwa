@@ -4,7 +4,7 @@ import boto3
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 
-dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
+dynamodb = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
 CLASSES_TABLE_NAME = os.environ.get("CLASSES_TABLE", "facepass-classes-prod")
 STUDENTS_TABLE_NAME = os.environ.get("STUDENTS_TABLE", "facepass-students-prod")

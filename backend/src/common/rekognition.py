@@ -14,7 +14,7 @@ from PIL import Image
 from typing import List, Dict, Any, Tuple
 from common.log_utils import log_error
 
-rekognition = boto3.client("rekognition", region_name=os.environ.get("AWS_REGION", "ap-southeast-1"))
+rekognition = boto3.client("rekognition", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
 def create_class_collection(collection_id: str) -> bool:
     try:

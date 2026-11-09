@@ -14,7 +14,7 @@ import { generateAttendanceCsv } from '../utils/csvHelper';
 const IS_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
 const RAW_API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '').replace(/\/$/, '');
 const API_BASE_URL = RAW_API_URL ? `${RAW_API_URL}/api` : '/api';
-const COGNITO_REGION = import.meta.env.VITE_COGNITO_REGION || 'ap-southeast-1';
+const COGNITO_REGION = import.meta.env.VITE_COGNITO_REGION || 'us-east-1';
 const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID || '';
 
 // In-Memory Storage for Mock Mode (Preserved across SPA transitions)

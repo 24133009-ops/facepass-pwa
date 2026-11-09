@@ -60,7 +60,7 @@ Write-Host ""
 # ------------------------------------------------------------------------------
 Write-Host ">>> [3/3] Running SAM Validate & Lint..." -ForegroundColor Yellow
 Set-Location -Path "$ROOT_DIR\backend"
-sam validate --lint --region ap-southeast-1
+sam validate --lint --region us-east-1
 $samCode = $LASTEXITCODE
 
 if ($samCode -eq 0) {

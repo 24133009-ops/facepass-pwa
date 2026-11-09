@@ -368,13 +368,13 @@ class TestAllHandlersAndRules(unittest.TestCase):
             "pathParameters": {"classId": "cls-01", "studentId": "SV01"}
         }
 
-        with patch.dict(os.environ, {"AWS_REGION": "ap-southeast-1", "PHOTO_BUCKET": "test-photo-bucket"}):
+        with patch.dict(os.environ, {"AWS_REGION": "us-east-1", "PHOTO_BUCKET": "test-photo-bucket"}):
             res = enrollment_handler.lambda_handler(event, None)
             self.assertEqual(res["statusCode"], 200)
             body = json.loads(res["body"])
             presigned_url = body["presignedPost"]["url"]
             # SigV4 presigned URL MUST contain the region name
-            self.assertIn("ap-southeast-1", presigned_url)
+            self.assertIn("us-east-1", presigned_url)
 
     @patch("handlers.attendance_handler.verify_class_ownership")
     def test_attendance_presigned_url_contains_region(self, mock_verify):
@@ -389,13 +389,13 @@ class TestAllHandlersAndRules(unittest.TestCase):
             "pathParameters": {"classId": "cls-01"}
         }
 
-        with patch.dict(os.environ, {"AWS_REGION": "ap-southeast-1", "PHOTO_BUCKET": "test-photo-bucket"}):
+        with patch.dict(os.environ, {"AWS_REGION": "us-east-1", "PHOTO_BUCKET": "test-photo-bucket"}):
             res = attendance_handler.lambda_handler(event, None)
             self.assertEqual(res["statusCode"], 200)
             body = json.loads(res["body"])
             presigned_url = body["presignedPost"]["url"]
             # SigV4 presigned URL MUST contain the region name
-            self.assertIn("ap-southeast-1", presigned_url)
+            self.assertIn("us-east-1", presigned_url)
     @patch("handlers.enrollment_handler.verify_class_ownership")
     @patch("handlers.enrollment_handler.db.get_student")
     def test_missing_consent_is_blocked_403(self, mock_get_st, mock_verify):

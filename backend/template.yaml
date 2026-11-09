@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   FacePass PWA - Production-grade Serverless Attendance System
-  Region: ap-southeast-1 | Runtime: Python 3.12
+  Region: us-east-1 | Runtime: Python 3.12
   Architecture: SAM, HTTP API, Lambda, Rekognition, DynamoDB, S3, Cognito, CloudFront, SSM Parameter Store (Gmail SMTP)
 
 Parameters:
@@ -11,13 +11,6 @@ Parameters:
     Default: prod
     AllowedValues: [dev, staging, prod]
     Description: Deployment environment stage.
-  AlertNotificationEmail:
-    Type: String
-    Description: Email address to receive AWS Budgets threshold alerts (Informational only, will not stop services).
-  BudgetLimitUSD:
-    Type: Number
-    Default: 5
-    Description: Monthly budget limit in USD.
 
 Globals:
   Function:
@@ -308,16 +301,7 @@ Resources:
       Handler: handlers.classes_handler.lambda_handler
       Timeout: 10
       MemorySize: 256
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ClassesTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - rekognition:CreateCollection
-                - rekognition:DeleteCollection
-                - rekognition:DescribeCollection
-              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
       Events:
         GetClasses:
           Type: HttpApi
@@ -346,16 +330,7 @@ Resources:
       Handler: handlers.students_handler.lambda_handler
       Timeout: 15
       MemorySize: 256
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref StudentsTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref ClassesTable
-        - Statement:
-            - Effect: Allow
-              Action:
-                - rekognition:DeleteFaces
-              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
       Events:
         GetStudents:
           Type: HttpApi
@@ -384,24 +359,7 @@ Resources:
       Handler: handlers.enrollment_handler.lambda_handler
       Timeout: 25
       MemorySize: 1024 # Allocated for high-res photo indexing
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref StudentsTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref ClassesTable
-        - S3CrudPolicy:
-            BucketName: !Ref PhotoStorageBucket
-        - Statement:
-            # IndexFaces is strictly scoped to class-specific collections
-            - Effect: Allow
-              Action:
-                - rekognition:IndexFaces
-              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
-            # DetectFaces operates on raw images and does not support resource-level permissions per AWS IAM specs
-            - Effect: Allow
-              Action:
-                - rekognition:DetectFaces
-              Resource: "*"
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
       Events:
         GetEnrollmentUploadUrl:
           Type: HttpApi
@@ -426,42 +384,7 @@ Resources:
         - !Ref PillowLayer
       Timeout: 25 # Set to 25s (< 30s HTTP API hard cutoff) to avoid uncaught 503 gateway drops
       MemorySize: 1024 # Allocated for Pillow group photo cropping & multi-face search
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SessionsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AttendanceTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref StudentsTable
-        - DynamoDBReadPolicy:
-            TableName: !Ref ClassesTable
-        - S3CrudPolicy:
-            BucketName: !Ref PhotoStorageBucket
-        - Statement:
-            # DetectFaces operates on raw images and does not support resource-level permissions per AWS IAM specs
-            - Effect: Allow
-              Action:
-                - rekognition:DetectFaces
-              Resource: "*"
-            # SearchFacesByImage is strictly scoped to class-specific collections
-            - Effect: Allow
-              Action:
-                - rekognition:SearchFacesByImage
-              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/facepass-*"
-            # Principle of Least Privilege: SSM Parameter Store access strictly for Gmail credentials
-            - Effect: Allow
-              Action:
-                - ssm:GetParameter
-                - ssm:GetParameters
-              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/facepass/gmail/*"
-            # AWS KMS Decrypt access for SSM SecureString parameters strictly via SSM service
-            - Effect: Allow
-              Action:
-                - kms:Decrypt
-              Resource: "*"
-              Condition:
-                StringEquals:
-                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LabRole"
       Events:
         GetAttendanceUploadUrl:
           Type: HttpApi
@@ -499,29 +422,6 @@ Resources:
             ApiId: !Ref HttpApiGateway
             Path: /api/classes/{classId}/attendance/{sessionId}/export
             Method: GET
-
-  # =========================================================================
-  # 8. COST GOVERNANCE: AWS Budgets Warning Alarm (Cap at 5 USD)
-  # =========================================================================
-  MonthlyCostBudget:
-    Type: AWS::Budgets::Budget
-    Properties:
-      Budget:
-        BudgetName: !Sub "facepass-monthly-limit-${Stage}"
-        BudgetType: COST
-        TimeUnit: MONTHLY
-        BudgetLimit:
-          Amount: !Ref BudgetLimitUSD
-          Unit: USD
-      NotificationsWithSubscribers:
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 80 # Warning triggers at $4.00 (80% of $5.00 limit)
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref AlertNotificationEmail
 
 Outputs:
   ApiUrl:

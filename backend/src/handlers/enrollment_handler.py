@@ -20,7 +20,7 @@ from common.log_utils import log_error
 from common import dynamodb as db
 from common import rekognition as rek
 
-AWS_REGION = os.environ.get("AWS_REGION", "ap-southeast-1")
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 s3 = boto3.client(
     "s3",
     region_name=AWS_REGION,

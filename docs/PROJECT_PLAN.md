@@ -1,7 +1,7 @@
 # 📋 Kế Hoạch Dự Án FacePass PWA (PROJECT PLAN)
 
 > **Hệ thống Điểm danh Lớp học Bằng Nhận diện Khuôn mặt (AWS Serverless & React PWA)**  
-> **Khu vực triển khai:** `ap-southeast-1` (Singapore)  
+> **Khu vực triển khai:** `us-east-1` (N. Virginia - AWS Academy Sandbox)  
 > **Runtime:** Python 3.12 (AWS Lambda) | React 18 + TypeScript + Vite + Tailwind CSS (PWA)
 
 ---
