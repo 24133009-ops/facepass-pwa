@@ -42,17 +42,13 @@ export const Header: React.FC<HeaderProps> = ({ title = 'FacePass PWA', onBack, 
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Mode Indicator Badge */}
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide ${
-              isMock
-                ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-            }`}
-          >
-            <Database className="w-3 h-3" />
-            {isMock ? 'MOCK DEV' : 'AWS PROD'}
-          </span>
+          {/* Mode Indicator Badge (Only shown in Mock Mode) */}
+          {isMock && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide bg-amber-100 text-amber-800 border border-amber-300">
+              <Database className="w-3 h-3" />
+              MOCK DEV
+            </span>
+          )}
 
           {teacher && (
             <button

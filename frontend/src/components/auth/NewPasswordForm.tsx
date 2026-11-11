@@ -9,7 +9,7 @@ export const NewPasswordForm: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Cognito Password Policy Rules
+  // Password Policy Rules
   const hasMinLength = newPassword.length >= 8;
   const hasUpper = /[A-Z]/.test(newPassword);
   const hasLower = /[a-z]/.test(newPassword);
@@ -44,7 +44,7 @@ export const NewPasswordForm: React.FC = () => {
         <div>
           <p className="font-semibold text-amber-950">Yêu cầu Đổi Mật Khẩu Lần Đầu</p>
           <p className="text-amber-800 text-xs mt-1 leading-relaxed">
-            Tài khoản này được cấp phát bởi Quản trị viên (Cognito Admin). Theo chính sách an toàn, bạn bắt buộc phải thiết lập mật khẩu cá nhân mới trước khi truy cập.
+            Tài khoản này được cấp phát bởi Quản trị viên. Theo chính sách an toàn, bạn bắt buộc phải thiết lập mật khẩu cá nhân mới trước khi truy cập.
           </p>
         </div>
       </div>
@@ -93,9 +93,9 @@ export const NewPasswordForm: React.FC = () => {
         </div>
       </div>
 
-      {/* Cognito Security Checklist */}
+      {/* Security Checklist */}
       <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2 text-xs">
-        <p className="font-semibold text-slate-700">Quy định mật khẩu Cognito:</p>
+        <p className="font-semibold text-slate-700">Quy định mật khẩu:</p>
         <div className="grid grid-cols-2 gap-2">
           <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
             {hasMinLength ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-slate-400" />}
@@ -115,8 +115,8 @@ export const NewPasswordForm: React.FC = () => {
           </div>
         </div>
         {confirmPassword && (
-          <div className={`pt-1 border-t border-slate-200 flex items-center gap-1.5 ${isMatch ? 'text-emerald-700 font-medium' : 'text-red-600'}`}>
-            {isMatch ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-red-500" />}
+          <div className={`pt-1 border-t border-slate-200 flex items-center gap-1.5 ${isMatch ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+            {isMatch ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-slate-400" />}
             <span>Mật khẩu xác nhận {isMatch ? 'trùng khớp' : 'chưa khớp'}</span>
           </div>
         )}

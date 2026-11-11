@@ -176,7 +176,7 @@ export const AttendanceSessionDetailModal: React.FC<AttendanceSessionDetailModal
                       Phát hiện {failedEmailCount} email cảnh báo vắng gửi thất bại
                     </span>
                     <p className="text-[11px] text-red-700 mt-0.5 leading-relaxed">
-                      Nguyên nhân có thể do SES Sandbox (email người nhận chưa verify) hoặc địa chỉ
+                      Nguyên nhân có thể do kết nối máy chủ gửi mail hoặc địa chỉ
                       không tồn tại. Giảng viên có thể nhấn nút <strong>Gửi lại</strong> bên dưới.
                     </p>
                   </div>

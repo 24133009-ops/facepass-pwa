@@ -101,7 +101,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
 
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-1">
-            Email (Để nhận cảnh báo vắng SES)
+            Email (Để nhận cảnh báo vắng)
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">

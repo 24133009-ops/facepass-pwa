@@ -26,18 +26,14 @@ export const LoginPage: React.FC = () => {
           Điểm danh lớp học bằng AI nhận diện khuôn mặt
         </p>
 
-        <div className="mt-2 flex justify-center">
-          <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-              isMock
-                ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
-            {isMock ? 'Chế độ Demo (Mock API Active)' : 'Kết nối AWS Production'}
-          </span>
-        </div>
+        {isMock && (
+          <div className="mt-2 flex justify-center">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+              <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+              Chế độ Demo (Mock API Active)
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
@@ -52,7 +48,7 @@ export const LoginPage: React.FC = () => {
             <span>Token lưu an toàn trong Memory • Không ghi vào LocalStorage</span>
           </div>
           <p className="text-[11px] text-slate-400">
-            AWS Serverless Architecture: Cognito • Lambda • Rekognition • DynamoDB • SES
+            AWS Serverless: Lambda • Rekognition • DynamoDB • S3
           </p>
         </div>
       </div>
