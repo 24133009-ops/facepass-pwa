@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { Mail, Lock, AlertCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../common/Button';
+import { apiService } from '../../services/api';
 
 export const LoginForm: React.FC = () => {
   const { login, isLoading, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const isMock = import.meta.env.VITE_USE_MOCK === 'true' || import.meta.env.VITE_USE_MOCK === true;
+  const isMock = apiService.isMockMode();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

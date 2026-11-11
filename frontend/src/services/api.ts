@@ -92,7 +92,7 @@ export const apiService = {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || 'Đăng nhập không thành công với tài khoản Cognito');
+        throw new Error(data.message || 'Đăng nhập không thành công');
       }
 
       if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
@@ -174,7 +174,7 @@ export const apiService = {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || 'Cập nhật mật khẩu mới Cognito thất bại');
+        throw new Error(data.message || 'Cập nhật mật khẩu mới thất bại');
       }
 
       const idToken = data.AuthenticationResult?.IdToken;

@@ -393,7 +393,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
         </div>
       </Modal>
 
-      {/* Confirmation Dialog before SES Email Dispatch */}
+      {/* Confirmation Dialog before Absence Email Dispatch */}
       <Modal
         isOpen={isConfirmDialogOpen}
         onClose={() => setIsConfirmDialogOpen(false)}
