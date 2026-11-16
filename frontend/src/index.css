@@ -7,6 +7,63 @@
     @apply h-full w-full overflow-x-hidden;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    scroll-behavior: smooth;
+  }
+
+  /* Respect user's reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Glassmorphism card */
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-xl border border-white/40 shadow-glass;
+  }
+
+  .glass-card-solid {
+    @apply bg-white/95 backdrop-blur-xl border border-slate-200/60 shadow-glass;
+  }
+
+  /* Gradient text utility */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600;
+  }
+
+  /* Gradient backgrounds */
+  .bg-gradient-brand {
+    background: linear-gradient(135deg, #2563eb 0%, #4f46e5 50%, #7c3aed 100%);
+    background-size: 200% 200%;
+  }
+
+  .bg-gradient-brand-animated {
+    background: linear-gradient(135deg, #1e40af, #2563eb, #4f46e5, #6d28d9, #4f46e5, #2563eb, #1e40af);
+    background-size: 400% 400%;
+    animation: gradientShift 8s ease infinite;
+  }
+
+  /* Skeleton loading shimmer */
+  .skeleton {
+    @apply bg-slate-200 rounded-xl relative overflow-hidden;
+  }
+
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
+  }
+
+  /* Stat card number animation */
+  .stat-number {
+    @apply text-3xl font-extrabold tracking-tight;
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -15,5 +72,23 @@
     min-height: 48px;
     min-width: 48px;
   }
-}
 
+  /* Stagger animation delays for list items */
+  .stagger-1 { animation-delay: 50ms; }
+  .stagger-2 { animation-delay: 100ms; }
+  .stagger-3 { animation-delay: 150ms; }
+  .stagger-4 { animation-delay: 200ms; }
+  .stagger-5 { animation-delay: 250ms; }
+  .stagger-6 { animation-delay: 300ms; }
+
+  /* Scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+  }
+}

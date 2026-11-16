@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LogOut, ArrowLeft, ShieldCheck, Database } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/api';
@@ -12,11 +12,24 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ title = 'FacePass PWA', onBack, showBack = false }) => {
   const { teacher, logout } = useAuth();
   const isMock = apiService.isMockMode();
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs px-4 py-3">
-      <div className="max-w-md mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <header
+      className={`sticky top-0 z-30 px-4 py-3 transition-all duration-300 ${
+        scrolled
+          ? 'bg-white/90 backdrop-blur-xl border-b border-slate-200/60 shadow-md'
+          : 'bg-white border-b border-slate-200 shadow-xs'
+      }`}
+    >
+      <div className="max-w-lg mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
           {showBack && onBack ? (
             <button
               onClick={onBack}
@@ -26,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({ title = 'FacePass PWA', onBack, 
               <ArrowLeft className="w-6 h-6" />
             </button>
           ) : (
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-600/25">
               <ShieldCheck className="w-5 h-5" />
             </div>
           )}
@@ -36,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({ title = 'FacePass PWA', onBack, 
               {title}
             </h1>
             {teacher && (
-              <p className="text-xs text-slate-500 truncate max-w-[180px]">{teacher.email}</p>
+              <p className="text-[11px] text-slate-500 truncate max-w-[180px]">{teacher.email}</p>
             )}
           </div>
         </div>
@@ -54,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ title = 'FacePass PWA', onBack, 
             <button
               onClick={logout}
               title="Đăng xuất"
-              className="p-2 -mr-2 text-slate-500 hover:text-red-600 active:bg-red-50 rounded-xl transition-colors touch-target flex items-center justify-center"
+              className="p-2 -mr-2 text-slate-400 hover:text-red-600 active:bg-red-50 rounded-xl transition-colors touch-target flex items-center justify-center"
             >
               <LogOut className="w-5 h-5" />
             </button>
@@ -64,4 +77,3 @@ export const Header: React.FC<HeaderProps> = ({ title = 'FacePass PWA', onBack, 
     </header>
   );
 };
-
