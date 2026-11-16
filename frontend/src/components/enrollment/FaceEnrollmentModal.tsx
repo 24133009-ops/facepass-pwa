@@ -31,6 +31,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const activeStep = successMessage ? 3 : consentAgreed ? 2 : 1;
 
   if (!isOpen || !student) return null;
 
@@ -125,10 +126,46 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           </span>
         </div>
 
+        {/* Enrollment Progress: consent, capture, completion */}
+        <div className="relative grid grid-cols-3 gap-1" aria-label={`Bước ${activeStep} trên 3 của đăng ký khuôn mặt`}>
+          <div className="absolute left-[16%] right-[16%] top-4 h-0.5 bg-slate-200" aria-hidden="true" />
+          <div
+            className={`absolute left-[16%] top-4 h-0.5 bg-gradient-to-r from-blue-600 to-emerald-500 transition-all duration-300 ${
+              activeStep === 1 ? 'w-0' : activeStep === 2 ? 'w-[34%]' : 'w-[68%]'
+            }`}
+            aria-hidden="true"
+          />
+          {[
+            { step: 1, label: 'Đồng ý' },
+            { step: 2, label: 'Chụp ảnh' },
+            { step: 3, label: 'Hoàn tất' }
+          ].map(({ step, label }) => {
+            const isComplete = activeStep > step;
+            const isActive = activeStep === step;
+
+            return (
+              <div key={step} className="relative z-10 flex flex-col items-center gap-1 text-center">
+                <span
+                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-black transition-colors ${
+                    isComplete || isActive
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-200 bg-white text-slate-400'
+                  }`}
+                >
+                  {isComplete ? <CheckCircle2 className="w-4 h-4" /> : step}
+                </span>
+                <span className={`text-[10px] font-semibold ${isActive ? 'text-blue-700' : 'text-slate-500'}`}>
+                  {label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
         {/* Success Alert */}
         {successMessage && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl text-xs flex items-start gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 animate-scale-in" />
             <p className="font-semibold leading-relaxed">{successMessage}</p>
           </div>
         )}
@@ -203,7 +240,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         )}
 
         {/* Camera Capture Module */}
-        {capturedPhotos.length < 3 ? (
+        {!successMessage && capturedPhotos.length < 3 ? (
           <div className="space-y-2">
             {!consentAgreed && (
               <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2">
@@ -212,7 +249,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               </div>
             )}
 
-            <div className={consentAgreed ? '' : 'opacity-40 pointer-events-none'}>
+            {consentAgreed && (
               <CameraCapture
                 initialFacingMode="user"
                 guideType="portrait"
@@ -220,9 +257,9 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                 onCapture={handleCapturePhoto}
                 isLoading={isSubmitting}
               />
-            </div>
+            )}
           </div>
-        ) : (
+        ) : !successMessage && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-center text-xs space-y-1">
             <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
             <p className="font-bold text-emerald-950">Đã chụp đủ 3 ảnh góc chụp khác nhau!</p>

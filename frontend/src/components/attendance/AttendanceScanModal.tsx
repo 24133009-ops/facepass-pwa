@@ -84,6 +84,7 @@ export const AttendanceScanModal: React.FC<AttendanceScanModalProps> = ({
 
   // Check if any of the captured photos has a longest edge < 1920px
   const lowResPhoto = capturedPhotos.find((p) => p.isResolutionLow);
+  const captureProgress = (capturedPhotos.length / 4) * 100;
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Điểm Danh Khuôn Mặt Cả Lớp">
@@ -102,6 +103,28 @@ export const AttendanceScanModal: React.FC<AttendanceScanModalProps> = ({
           <p className="text-xs text-blue-800 leading-relaxed">
             Bạn có thể chụp <strong>1 hoặc nhiều góc ảnh</strong> (dãy trái, dãy phải, phía sau). AI sẽ tự động gộp kết quả và loại trùng sinh viên theo độ tương đồng cao nhất.
           </p>
+          <div className="pt-2" aria-label={`Tiến độ chụp ${capturedPhotos.length} trên 4 góc ảnh`}>
+            <div className="flex items-center justify-between text-[11px] font-semibold text-blue-700 mb-1.5">
+              <span>Tiến độ thu thập góc chụp</span>
+              <span>{capturedPhotos.length === 0 ? 'Sẵn sàng quét' : `${capturedPhotos.length}/4 góc`}</span>
+            </div>
+            <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 transition-[width] duration-300"
+                style={{ width: `${captureProgress}%` }}
+              />
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-1.5" aria-hidden="true">
+              {[1, 2, 3, 4].map((step) => (
+                <span
+                  key={step}
+                  className={`h-1.5 rounded-full ${
+                    step <= capturedPhotos.length ? 'bg-blue-600' : 'bg-blue-200'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Low Resolution Warning (if any photo has longest edge < 1920px) */}
