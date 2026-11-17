@@ -7,6 +7,7 @@ import { CompressedImageResult } from '../../utils/imageCompressor';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { CameraCapture } from '../camera/CameraCapture';
+import { ThumbnailImage } from '../common/ThumbnailImage';
 
 interface FaceEnrollmentModalProps {
   isOpen: boolean;
@@ -217,7 +218,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                   key={idx}
                   className="relative aspect-[4/5] bg-slate-100 rounded-xl overflow-hidden border border-slate-300 shadow-xs group"
                 >
-                  <img
+                  <ThumbnailImage
                     src={photo.dataUrl}
                     alt={`Ảnh ${idx + 1}`}
                     className="w-full h-full object-cover"

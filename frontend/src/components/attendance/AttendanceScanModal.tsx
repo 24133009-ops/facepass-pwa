@@ -7,6 +7,7 @@ import { ScanResult } from '../../types';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { CameraCapture } from '../camera/CameraCapture';
+import { ThumbnailImage } from '../common/ThumbnailImage';
 
 interface AttendanceScanModalProps {
   isOpen: boolean;
@@ -158,7 +159,7 @@ export const AttendanceScanModal: React.FC<AttendanceScanModalProps> = ({
                   key={idx}
                   className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden border border-slate-300 shadow-xs group"
                 >
-                  <img
+                  <ThumbnailImage
                     src={photo.dataUrl}
                     alt={`Góc ảnh ${idx + 1}`}
                     className="w-full h-full object-cover"

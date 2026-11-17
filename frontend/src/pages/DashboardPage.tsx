@@ -103,7 +103,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Header title="FacePass PWA" />
 
-      <main className="flex-1 max-w-lg w-full mx-auto p-4 space-y-5 pb-24">
+      <main id="page-content" tabIndex={-1} className="flex-1 max-w-lg md:max-w-5xl w-full mx-auto p-4 space-y-5 pb-24 lg:pb-8">
         {/* Welcome Section */}
         <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 rounded-3xl p-5 text-white shadow-glow-blue animate-fade-in">
           <p className="text-sm text-blue-100/80">{greeting},</p>

@@ -28,7 +28,7 @@ export const Header: React.FC<HeaderProps> = ({ title = 'FacePass PWA', onBack, 
           : 'bg-white border-b border-slate-200 shadow-xs'
       }`}
     >
-      <div className="max-w-lg mx-auto flex items-center justify-between">
+      <div className="max-w-lg md:max-w-5xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           {showBack && onBack ? (
             <button

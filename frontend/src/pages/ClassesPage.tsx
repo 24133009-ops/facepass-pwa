@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { Plus, Search, BookOpen, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ClassItem } from '../types';
 import { apiService } from '../services/api';
 import { Header } from '../components/common/Header';
 import { ClassCard } from '../components/classes/ClassCard';
-import { CreateClassModal } from '../components/classes/CreateClassModal';
 import { Button } from '../components/common/Button';
+
+const CreateClassModal = lazy(() =>
+  import('../components/classes/CreateClassModal').then(m => ({ default: m.CreateClassModal }))
+);
 
 interface ClassesPageProps {
   onSelectClass: (classItem: ClassItem) => void;
@@ -60,7 +63,7 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ onSelectClass }) => {
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Header title="Lớp Học Của Tôi" />
 
-      <main className="flex-1 max-w-md w-full mx-auto p-4 space-y-4 pb-24">
+      <main id="page-content" tabIndex={-1} className="flex-1 max-w-md md:max-w-5xl w-full mx-auto p-4 space-y-4 pb-24 lg:pb-8">
         {/* Top Control Bar: Search & Create */}
         <div className="space-y-3">
           <div className="relative">
@@ -137,19 +140,25 @@ export const ClassesPage: React.FC<ClassesPageProps> = ({ onSelectClass }) => {
               </button>
             </div>
 
-            {filteredClasses.map((item) => (
-              <ClassCard key={item.classId} classItem={item} onSelect={onSelectClass} />
-            ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredClasses.map((item) => (
+                <ClassCard key={item.classId} classItem={item} onSelect={onSelectClass} />
+              ))}
+            </div>
           </div>
         )}
       </main>
 
-      <CreateClassModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onCreate={handleCreateClass}
-        isLoading={isCreating}
-      />
+      <Suspense fallback={null}>
+        {isModalOpen && (
+          <CreateClassModal
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            onCreate={handleCreateClass}
+            isLoading={isCreating}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };

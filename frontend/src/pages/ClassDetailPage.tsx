@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   UserPlus,
@@ -21,13 +21,26 @@ import { apiService } from '../services/api';
 import { downloadCsvFile, generateAttendanceCsv } from '../utils/csvHelper';
 import { Header } from '../components/common/Header';
 import { StudentItemCard } from '../components/students/StudentItem';
-import { AddStudentModal } from '../components/students/AddStudentModal';
-import { ImportCsvModal } from '../components/students/ImportCsvModal';
-import { FaceEnrollmentModal } from '../components/enrollment/FaceEnrollmentModal';
-import { AttendanceScanModal } from '../components/attendance/AttendanceScanModal';
-import { AttendanceReviewModal } from '../components/attendance/AttendanceReviewModal';
-import { AttendanceSessionDetailModal } from '../components/attendance/AttendanceSessionDetailModal';
 import { Button } from '../components/common/Button';
+
+const AddStudentModal = lazy(() =>
+  import('../components/students/AddStudentModal').then(m => ({ default: m.AddStudentModal }))
+);
+const ImportCsvModal = lazy(() =>
+  import('../components/students/ImportCsvModal').then(m => ({ default: m.ImportCsvModal }))
+);
+const FaceEnrollmentModal = lazy(() =>
+  import('../components/enrollment/FaceEnrollmentModal').then(m => ({ default: m.FaceEnrollmentModal }))
+);
+const AttendanceScanModal = lazy(() =>
+  import('../components/attendance/AttendanceScanModal').then(m => ({ default: m.AttendanceScanModal }))
+);
+const AttendanceReviewModal = lazy(() =>
+  import('../components/attendance/AttendanceReviewModal').then(m => ({ default: m.AttendanceReviewModal }))
+);
+const AttendanceSessionDetailModal = lazy(() =>
+  import('../components/attendance/AttendanceSessionDetailModal').then(m => ({ default: m.AttendanceSessionDetailModal }))
+);
 
 interface ClassDetailPageProps {
   classItem: ClassItem;
@@ -224,7 +237,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
         )}
       </AnimatePresence>
 
-      <main className="flex-1 max-w-md w-full mx-auto p-4 space-y-4 pb-28">
+      <main id="page-content" tabIndex={-1} className="flex-1 max-w-md md:max-w-5xl w-full mx-auto p-4 space-y-4 pb-28 lg:pb-8">
         {/* Class Overview Hero Banner with Gradient & Metrics */}
         <div className="relative overflow-hidden bg-gradient-to-br from-blue-800 via-blue-700 to-indigo-700 rounded-3xl p-5 border border-blue-500/50 shadow-card">
           <div
@@ -670,54 +683,78 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
       </main>
 
       {/* Modals for Task 8, 9, 10, 11 */}
-      <AddStudentModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAdd={handleAddStudent}
-        isLoading={isActionLoading}
-      />
+      <Suspense fallback={null}>
+        {isAddModalOpen && (
+          <AddStudentModal
+            isOpen={isAddModalOpen}
+            onClose={() => setIsAddModalOpen(false)}
+            onAdd={handleAddStudent}
+            isLoading={isActionLoading}
+          />
+        )}
+      </Suspense>
 
-      <ImportCsvModal
-        isOpen={isCsvModalOpen}
-        onClose={() => setIsCsvModalOpen(false)}
-        onImport={handleImportCsv}
-        isLoading={isActionLoading}
-      />
+      <Suspense fallback={null}>
+        {isCsvModalOpen && (
+          <ImportCsvModal
+            isOpen={isCsvModalOpen}
+            onClose={() => setIsCsvModalOpen(false)}
+            onImport={handleImportCsv}
+            isLoading={isActionLoading}
+          />
+        )}
+      </Suspense>
 
       {/* Task 9: Biometric Face Enrollment Modal */}
-      <FaceEnrollmentModal
-        isOpen={isEnrollModalOpen}
-        onClose={() => setIsEnrollModalOpen(false)}
-        student={selectedEnrollStudent}
-        classId={classItem.classId}
-        onSuccess={handleEnrollSuccess}
-      />
+      <Suspense fallback={null}>
+        {isEnrollModalOpen && (
+          <FaceEnrollmentModal
+            isOpen={isEnrollModalOpen}
+            onClose={() => setIsEnrollModalOpen(false)}
+            student={selectedEnrollStudent}
+            classId={classItem.classId}
+            onSuccess={handleEnrollSuccess}
+          />
+        )}
+      </Suspense>
 
       {/* Task 10: Attendance Camera Scan Modal */}
-      <AttendanceScanModal
-        isOpen={isScanModalOpen}
-        onClose={() => setIsScanModalOpen(false)}
-        classId={classItem.classId}
-        className={classItem.name}
-        onScanComplete={handleScanComplete}
-      />
+      <Suspense fallback={null}>
+        {isScanModalOpen && (
+          <AttendanceScanModal
+            isOpen={isScanModalOpen}
+            onClose={() => setIsScanModalOpen(false)}
+            classId={classItem.classId}
+            className={classItem.name}
+            onScanComplete={handleScanComplete}
+          />
+        )}
+      </Suspense>
 
       {/* Task 10: Attendance 3-Group Review Modal */}
-      <AttendanceReviewModal
-        isOpen={isReviewModalOpen}
-        onClose={() => setIsReviewModalOpen(false)}
-        scanResult={scanResult}
-        classId={classItem.classId}
-        onConfirmed={handleAttendanceConfirmed}
-      />
+      <Suspense fallback={null}>
+        {isReviewModalOpen && (
+          <AttendanceReviewModal
+            isOpen={isReviewModalOpen}
+            onClose={() => setIsReviewModalOpen(false)}
+            scanResult={scanResult}
+            classId={classItem.classId}
+            onConfirmed={handleAttendanceConfirmed}
+          />
+        )}
+      </Suspense>
 
       {/* Task 11: Attendance Session Detail Modal */}
-      <AttendanceSessionDetailModal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        session={selectedSessionDetail}
-        onSessionUpdated={handleSessionUpdated}
-      />
+      <Suspense fallback={null}>
+        {isDetailModalOpen && (
+          <AttendanceSessionDetailModal
+            isOpen={isDetailModalOpen}
+            onClose={() => setIsDetailModalOpen(false)}
+            session={selectedSessionDetail}
+            onSessionUpdated={handleSessionUpdated}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };

@@ -1,9 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="192" height="192" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
-  <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
-  <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
-  <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
-  <circle cx="12" cy="11" r="3"/>
-  <path d="M7 18.5a5 5 0 0 1 10 0"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb"/>
+      <stop offset=".5" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#brand)" d="M0 0h512v512H0z"/>
+  <g stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M136 196v-40q0-20 20-20h40m120 0h40q20 0 20 20v40m0 120v40q0 20-20 20h-40m-120 0h-40q-20 0-20-20v-40"/>
+    <circle cx="256" cy="232" r="44"/>
+    <path d="M192 328c16-56 112-56 128 0"/>
+  </g>
 </svg>
 
