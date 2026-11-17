@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   UserPlus,
@@ -22,23 +22,24 @@ import { downloadCsvFile, generateAttendanceCsv } from '../utils/csvHelper';
 import { Header } from '../components/common/Header';
 import { StudentItemCard } from '../components/students/StudentItem';
 import { Button } from '../components/common/Button';
+import { lazyModal } from '../components/common/ErrorBoundary';
 
-const AddStudentModal = lazy(() =>
+const AddStudentModal = lazyModal<React.ComponentProps<typeof import('../components/students/AddStudentModal').AddStudentModal>>(() =>
   import('../components/students/AddStudentModal').then(m => ({ default: m.AddStudentModal }))
 );
-const ImportCsvModal = lazy(() =>
+const ImportCsvModal = lazyModal<React.ComponentProps<typeof import('../components/students/ImportCsvModal').ImportCsvModal>>(() =>
   import('../components/students/ImportCsvModal').then(m => ({ default: m.ImportCsvModal }))
 );
-const FaceEnrollmentModal = lazy(() =>
+const FaceEnrollmentModal = lazyModal<React.ComponentProps<typeof import('../components/enrollment/FaceEnrollmentModal').FaceEnrollmentModal>>(() =>
   import('../components/enrollment/FaceEnrollmentModal').then(m => ({ default: m.FaceEnrollmentModal }))
 );
-const AttendanceScanModal = lazy(() =>
+const AttendanceScanModal = lazyModal<React.ComponentProps<typeof import('../components/attendance/AttendanceScanModal').AttendanceScanModal>>(() =>
   import('../components/attendance/AttendanceScanModal').then(m => ({ default: m.AttendanceScanModal }))
 );
-const AttendanceReviewModal = lazy(() =>
+const AttendanceReviewModal = lazyModal<React.ComponentProps<typeof import('../components/attendance/AttendanceReviewModal').AttendanceReviewModal>>(() =>
   import('../components/attendance/AttendanceReviewModal').then(m => ({ default: m.AttendanceReviewModal }))
 );
-const AttendanceSessionDetailModal = lazy(() =>
+const AttendanceSessionDetailModal = lazyModal<React.ComponentProps<typeof import('../components/attendance/AttendanceSessionDetailModal').AttendanceSessionDetailModal>>(() =>
   import('../components/attendance/AttendanceSessionDetailModal').then(m => ({ default: m.AttendanceSessionDetailModal }))
 );
 
@@ -268,7 +269,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
 
           {/* Quick Metrics */}
           <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-2xl border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-center gap-1 text-slate-500 text-xs mb-1">
                 <Users className="w-3.5 h-3.5 text-blue-600" />
                 <span>Sĩ số</span>
@@ -276,7 +277,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
               <div className="text-xl font-black text-slate-900">{students.length}</div>
             </div>
 
-            <div className="bg-emerald-50/90 backdrop-blur-xs p-3 rounded-2xl border border-emerald-200/80 shadow-2xs">
+            <div className="bg-emerald-50/90 backdrop-blur-xs p-3 rounded-2xl border border-emerald-200/80 shadow-sm">
               <div className="flex items-center justify-center gap-1 text-emerald-700 text-xs mb-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Đã nạp mặt</span>
@@ -284,7 +285,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
               <div className="text-xl font-black text-emerald-700">{enrolledCount}</div>
             </div>
 
-            <div className="bg-amber-50/90 backdrop-blur-xs p-3 rounded-2xl border border-amber-200/80 shadow-2xs">
+            <div className="bg-amber-50/90 backdrop-blur-xs p-3 rounded-2xl border border-amber-200/80 shadow-sm">
               <div className="flex items-center justify-center gap-1 text-amber-700 text-xs mb-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                 <span>Chưa có mặt</span>
@@ -352,7 +353,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
         </div>
 
         {/* Tab Navigation with Animated Framer-Motion Indicator */}
-        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 border border-slate-200/90 shadow-xs relative">
+        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 border border-slate-200/90 shadow-sm relative">
           <button
             type="button"
             onClick={() => setActiveTab('students')}
@@ -454,7 +455,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="p-3.5 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3"
+                    className="p-3.5 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-11 h-11 skeleton rounded-2xl shrink-0" />
@@ -530,7 +531,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                 {[1, 2, 3].map((i) => (
                   <div
                     key={i}
-                    className="relative p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs space-y-3"
+                    className="relative p-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm space-y-3"
                   >
                     <div className="absolute -left-[29px] top-4 w-4 h-4 rounded-full skeleton ring-4 ring-white" />
                     <div className="flex justify-between items-center">
@@ -582,7 +583,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                       className="relative group p-4 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 hover:shadow-card transition-all duration-200 space-y-3"
                     >
                       {/* Timeline node */}
-                      <div className="absolute -left-[29px] top-4 w-4 h-4 rounded-full bg-blue-600 ring-4 ring-white shadow-xs group-hover:scale-110 transition-transform" />
+                      <div className="absolute -left-[29px] top-4 w-4 h-4 rounded-full bg-blue-600 ring-4 ring-white shadow-sm group-hover:scale-110 transition-transform" />
 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -655,7 +656,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                           type="button"
                           onClick={() => handleExportSessionCsv(sess)}
                           title="Tải báo cáo CSV có UTF-8 BOM và chống CSV injection"
-                          className="flex-1 min-h-[42px] py-2 px-3 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-300 flex items-center justify-center gap-1.5 transition-colors touch-target shadow-2xs"
+                          className="flex-1 min-h-[42px] py-2 px-3 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-300 flex items-center justify-center gap-1.5 transition-colors touch-target shadow-sm"
                         >
                           <Download className="w-4 h-4 text-emerald-700" />
                           <span>Xuất CSV (BOM UTF-8)</span>
@@ -667,7 +668,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                             setSelectedSessionDetail(sess);
                             setIsDetailModalOpen(true);
                           }}
-                          className="min-h-[42px] px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors touch-target flex items-center gap-1 shadow-2xs"
+                          className="min-h-[42px] px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors touch-target flex items-center gap-1 shadow-sm"
                         >
                           <span>Chi tiết</span>
                           <ChevronRight className="w-4 h-4" />

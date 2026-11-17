@@ -192,7 +192,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="Đối Soát Kết Quả Nhận Diện AI">
+      <Modal isOpen={isOpen} onClose={onClose} closeOnBackdrop={false} title="Đối Soát Kết Quả Nhận Diện AI">
         <div className="space-y-4">
           {/* Top Session Metric Card */}
           <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
@@ -459,6 +459,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
       {/* Confirmation Dialog before Absence Email Dispatch */}
       <Modal
         isOpen={isConfirmDialogOpen}
+        closeOnBackdrop={false}
         onClose={() => setIsConfirmDialogOpen(false)}
         title="Xác Nhận Chốt Buổi Học & Gửi Email Cảnh Báo"
       >

@@ -40,7 +40,7 @@ export const StudentItemCard: React.FC<StudentItemProps> = ({ student, onDelete,
         {/* Left Avatar with Initials */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div
-            className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-bold text-xs tracking-wider shadow-xs transition-transform duration-200 group-hover:scale-105 ${
+            className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-bold text-xs tracking-wider shadow-sm transition-transform duration-200 group-hover:scale-105 ${
               hasFace
                 ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-blue-500/20'
                 : 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600 border border-slate-300/70'
@@ -65,7 +65,7 @@ export const StudentItemCard: React.FC<StudentItemProps> = ({ student, onDelete,
             {/* Enrollment Status Badge */}
             <div className="flex items-center gap-2">
               {hasFace ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-0.5 rounded-full shadow-2xs">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-0.5 rounded-full shadow-sm">
                   <CheckCircle2 className="w-3.5 h-3.5 text-white shrink-0" />
                   <span>Đã đăng ký ({student.faceIds.length})</span>
                 </span>
@@ -84,7 +84,7 @@ export const StudentItemCard: React.FC<StudentItemProps> = ({ student, onDelete,
           {!hasFace && onEnroll && (
             <button
               onClick={() => onEnroll(student)}
-              className="px-3 min-h-[40px] text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 active:bg-blue-200/80 rounded-xl transition-all border border-blue-200 flex items-center gap-1 shadow-2xs active:scale-95"
+              className="px-3 min-h-[40px] text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100/80 active:bg-blue-200/80 rounded-xl transition-all border border-blue-200 flex items-center gap-1 shadow-sm active:scale-95"
             >
               <Sparkles className="w-3.5 h-3.5 text-blue-500" />
               <span>Chụp mặt</span>
@@ -102,7 +102,7 @@ export const StudentItemCard: React.FC<StudentItemProps> = ({ student, onDelete,
 
           {/* Purely decorative visual swipe hint on mobile */}
           <div
-            className="hidden xs:flex flex-col gap-0.5 pl-0.5 text-slate-300 select-none opacity-40 group-hover:opacity-70 transition-opacity"
+            className="hidden sm:flex flex-col gap-0.5 pl-0.5 text-slate-300 select-none opacity-40 group-hover:opacity-70 transition-opacity"
             aria-hidden="true"
             title="Vuốt để xem thao tác"
           >

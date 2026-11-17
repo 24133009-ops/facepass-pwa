@@ -42,7 +42,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       setError('Đã chụp đủ tối đa 3 ảnh mẫu cho sinh viên');
       return;
     }
-    setCapturedPhotos((prev) => [...prev, result]);
+    setCapturedPhotos((prev) => prev.length >= 3 ? prev : [...prev, result]);
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -112,7 +112,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Đăng Ký Khuôn Mặt Sinh Viên">
+    <Modal isOpen={isOpen} onClose={handleClose} closeOnBackdrop={false} title="Đăng Ký Khuôn Mặt Sinh Viên">
       <div className="space-y-4">
         {/* Student Target Banner */}
         <div className="p-3 bg-blue-50 rounded-2xl border border-blue-200 flex items-center justify-between">

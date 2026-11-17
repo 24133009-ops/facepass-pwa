@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { Plus, Search, BookOpen, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ClassItem } from '../types';
@@ -6,8 +6,9 @@ import { apiService } from '../services/api';
 import { Header } from '../components/common/Header';
 import { ClassCard } from '../components/classes/ClassCard';
 import { Button } from '../components/common/Button';
+import { lazyModal } from '../components/common/ErrorBoundary';
 
-const CreateClassModal = lazy(() =>
+const CreateClassModal = lazyModal<React.ComponentProps<typeof import('../components/classes/CreateClassModal').CreateClassModal>>(() =>
   import('../components/classes/CreateClassModal').then(m => ({ default: m.CreateClassModal }))
 );
 

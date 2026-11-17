@@ -246,19 +246,19 @@ export const AttendanceSessionDetailModal: React.FC<AttendanceSessionDetailModal
             </div>
 
             <div className="grid grid-cols-3 gap-2 flex-1 text-center text-xs">
-              <div className="p-2 bg-white rounded-xl border border-slate-200/90 shadow-2xs">
+              <div className="p-2 bg-white rounded-xl border border-slate-200/90 shadow-sm">
                 <span className="text-slate-500 text-[11px]">Sĩ số</span>
                 <p className="font-extrabold text-slate-900 text-sm mt-0.5">
                   {records.length}
                 </p>
               </div>
-              <div className="p-2 bg-emerald-50/80 rounded-xl border border-emerald-200/90 shadow-2xs">
+              <div className="p-2 bg-emerald-50/80 rounded-xl border border-emerald-200/90 shadow-sm">
                 <span className="text-emerald-700 text-[11px]">Có mặt</span>
                 <p className="font-extrabold text-emerald-700 text-sm mt-0.5">
                   {presentRecords.length}
                 </p>
               </div>
-              <div className="p-2 bg-rose-50/80 rounded-xl border border-rose-200/90 shadow-2xs">
+              <div className="p-2 bg-rose-50/80 rounded-xl border border-rose-200/90 shadow-sm">
                 <span className="text-rose-700 text-[11px]">Vắng</span>
                 <p className="font-extrabold text-rose-700 text-sm mt-0.5">
                   {absentRecords.length}
@@ -284,7 +284,7 @@ export const AttendanceSessionDetailModal: React.FC<AttendanceSessionDetailModal
               return (
                 <div
                   key={st.studentId}
-                  className="p-2.5 bg-white rounded-xl border border-slate-200/90 hover:border-emerald-200 flex items-center justify-between text-xs gap-2.5 shadow-2xs transition-colors"
+                  className="p-2.5 bg-white rounded-xl border border-slate-200/90 hover:border-emerald-200 flex items-center justify-between text-xs gap-2.5 shadow-sm transition-colors"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-[11px] flex items-center justify-center shrink-0 border border-emerald-200">
@@ -314,7 +314,7 @@ export const AttendanceSessionDetailModal: React.FC<AttendanceSessionDetailModal
               return (
                 <div
                   key={st.studentId}
-                  className={`p-3 rounded-xl border text-xs space-y-2 shadow-2xs transition-colors ${
+                  className={`p-3 rounded-xl border text-xs space-y-2 shadow-sm transition-colors ${
                     st.emailStatus === 'failed'
                       ? 'bg-rose-50/70 border-rose-300'
                       : 'bg-rose-50/30 border-rose-200/90'

@@ -7,9 +7,10 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  closeOnBackdrop?: boolean;
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, closeOnBackdrop = true }) => {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -34,7 +35,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
           {/* Backdrop */}
           <motion.div
             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={closeOnBackdrop ? onClose : undefined}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

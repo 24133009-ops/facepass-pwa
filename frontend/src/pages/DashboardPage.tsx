@@ -30,36 +30,70 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [sessions, setSessions] = useState<SessionHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [averageAttendance, setAverageAttendance] = useState(0);
-  const [totalEmailsSent, setTotalEmailsSent] = useState(0);
+  const [totalStudents, setTotalStudents] = useState<number | null>(null);
+  const [averageAttendance, setAverageAttendance] = useState<number | null>(null);
+  const [totalEmailsSent, setTotalEmailsSent] = useState<number | null>(null);
+  const [hasLoadedClasses, setHasLoadedClasses] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     const loadData = async () => {
       if (!token) return;
       setIsLoading(true);
+      setError(null);
+      setHistoryNotice(null);
+      setHasLoadedClasses(false);
+      setClasses([]);
+      setSessions([]);
+      setTotalStudents(null);
+      setAverageAttendance(null);
+      setTotalEmailsSent(null);
       try {
         const classList = await apiService.getClasses(token);
+        if (cancelled) return;
+        setHasLoadedClasses(true);
         setClasses(classList);
 
-        let stuCount = 0;
-        let allSessions: SessionHistoryItem[] = [];
+        const [studentResults, sessionResults] = await Promise.all([
+          Promise.allSettled(classList.map(cls => apiService.getStudents(token, cls.classId))),
+          Promise.allSettled(classList.map(cls => apiService.getClassSessions(token, cls.classId)))
+        ]);
+        if (cancelled) return;
 
-        for (const cls of classList) {
-          stuCount += cls.studentCount ?? 0;
-          try {
-            const classSessions = await apiService.getClassSessions(token, cls.classId);
-            allSessions = [...allSessions, ...classSessions];
-          } catch {
-            // Ignore session fetch errors
+        const failures: string[] = [];
+        let studentCount = 0;
+        const countedClasses = classList.map((cls, index) => {
+          const result = studentResults[index];
+          if (result.status === 'rejected') {
+            failures.push(`danh sách sinh viên lớp ${cls.name}`);
+            return { ...cls, studentCount: undefined };
           }
+          studentCount += result.value.length;
+          return { ...cls, studentCount: result.value.length };
+        });
+        setClasses(countedClasses);
+        if (studentResults.every(result => result.status === 'fulfilled')) {
+          setTotalStudents(studentCount);
         }
 
-        setTotalStudents(stuCount);
+        const allSessions: SessionHistoryItem[] = [];
+        sessionResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') allSessions.push(...result.value);
+          else failures.push(`lịch sử điểm danh lớp ${classList[index].name}`);
+        });
         setSessions(allSessions.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()));
 
-        // Calculate average attendance
-        if (allSessions.length > 0) {
+        const hasCompleteRecords = allSessions.every(sess => Array.isArray(sess.records));
+        if (!hasCompleteRecords) failures.push('chi tiết kết quả điểm danh');
+        // Empty history may also be an HTTP error hidden by the existing API service.
+        const hasEmptyHistory = sessionResults.some(result => result.status === 'fulfilled' && result.value.length === 0);
+        if (hasEmptyHistory) {
+          setHistoryNotice('Một số lớp chưa có lịch sử để tổng hợp. Thử tải lại nếu lớp đã có buổi điểm danh.');
+        }
+        if (sessionResults.every(result => result.status === 'fulfilled') && !hasEmptyHistory && hasCompleteRecords && allSessions.length > 0) {
           let totalPresent = 0;
           let totalRecords = 0;
           let emailsSent = 0;
@@ -72,18 +106,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             }
           }
 
-          setAverageAttendance(totalRecords > 0 ? Math.round((totalPresent / totalRecords) * 100) : 0);
-          setTotalEmailsSent(emailsSent);
+          setAverageAttendance(totalRecords > 0 ? Math.round((totalPresent / totalRecords) * 100) : null);
+          setTotalEmailsSent(totalRecords > 0 ? emailsSent : null);
         }
-      } catch {
-        // Ignore errors
+        if (failures.length > 0) {
+          setError(`Không thể tải đầy đủ ${failures.join('; ')}. Một số thống kê chưa có dữ liệu.`);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Không thể tải dữ liệu tổng quan.');
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     loadData();
-  }, [token]);
+    return () => { cancelled = true; };
+  }, [token, retryCount]);
 
   const greetingName = teacher?.name || teacher?.email?.split('@')[0] || 'Giảng viên';
   const now = new Date();
@@ -114,6 +152,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </p>
         </div>
 
+        {(error || historyNotice) && (
+          <div role={error ? 'alert' : 'status'} className={`flex items-center justify-between gap-3 rounded-2xl border p-4 text-sm ${error ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+            <span>{error || historyNotice}</span>
+            <button type="button" disabled={isLoading} onClick={() => setRetryCount(count => count + 1)} className="shrink-0 font-semibold underline disabled:opacity-50">
+              Thử lại
+            </button>
+          </div>
+        )}
+
         {/* Stats Grid */}
         {isLoading ? (
           <div className="grid grid-cols-2 gap-3">
@@ -126,26 +173,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <StatCard
               icon={<BookOpen className="w-5 h-5" />}
               label="Lớp học"
-              value={classes.length}
+              value={hasLoadedClasses ? classes.length : '—'}
               color="blue"
             />
             <StatCard
               icon={<Users className="w-5 h-5" />}
               label="Sinh viên"
-              value={totalStudents}
+              value={totalStudents ?? '—'}
               color="violet"
             />
             <StatCard
               icon={<CheckCircle2 className="w-5 h-5" />}
               label="Tỷ lệ đi học"
-              value={averageAttendance}
+              value={averageAttendance ?? '—'}
               color="emerald"
-              suffix="%"
+              suffix={averageAttendance === null ? undefined : '%'}
             />
             <StatCard
               icon={<Mail className="w-5 h-5" />}
               label="Email đã gửi"
-              value={totalEmailsSent}
+              value={totalEmailsSent ?? '—'}
               color="amber"
             />
           </div>
@@ -202,7 +249,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <div className="text-left">
                       <p className="text-sm font-semibold text-slate-900 line-clamp-1">{cls.name}</p>
                       <p className="text-[11px] text-slate-500">
-                        {cls.studentCount ?? 0} sinh viên • {cls.classId}
+                        {cls.studentCount ?? '—'} sinh viên • {cls.classId}
                       </p>
                     </div>
                   </div>
@@ -222,8 +269,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </h3>
             <div className="space-y-2">
               {recentSessions.map((sess) => {
-                const presentCount = sess.records?.filter((r) => r.status === 'present').length ?? 0;
-                const totalCount = sess.records?.length ?? 0;
+                const presentCount = sess.presentCount ?? '—';
+                const totalCount = sess.totalStudents ?? '—';
                 const timeFormatted = new Date(sess.startedAt).toLocaleString('vi-VN', {
                   hour: '2-digit',
                   minute: '2-digit',

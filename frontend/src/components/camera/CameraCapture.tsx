@@ -32,6 +32,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   const savedTimerRef = useRef<number | null>(null);
   const isMountedRef = useRef<boolean>(true);
   const captureLockRef = useRef<boolean>(false);
+  const captureInProgressRef = useRef<boolean>(false);
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>(initialFacingMode);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -71,7 +72,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       countdownTimerRef.current = null;
     }
     setCountdown(null);
-    captureLockRef.current = false;
+    if (!captureInProgressRef.current) captureLockRef.current = false;
   }, []);
 
   const clearFlash = useCallback(() => {
@@ -167,11 +168,13 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
   // Capture frame from live video
   const handleCaptureVideoFrame = async () => {
+    if (captureInProgressRef.current) return;
     if (!videoRef.current || !isCameraActive || isProcessing || isLoading) {
       captureLockRef.current = false;
       return;
     }
 
+    captureInProgressRef.current = true;
     setIsProcessing(true);
     try {
       const video = videoRef.current;
@@ -197,6 +200,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     } catch {
       setCameraError('Không thể chụp ảnh từ video frame. Vui lòng thử lại hoặc chọn ảnh dự phòng.');
     } finally {
+      captureInProgressRef.current = false;
       setIsProcessing(false);
       captureLockRef.current = false;
     }
@@ -231,9 +235,18 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
   // Fallback: handle file input selection or device native camera capture
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
 
+    // A pending picker selection takes over from the countdown, never from compression.
+    if (countdownTimerRef.current !== null) clearCountdown();
+    if (captureLockRef.current || isLoading) {
+      input.value = '';
+      return;
+    }
+    captureLockRef.current = true;
+    captureInProgressRef.current = true;
     setIsProcessing(true);
     try {
       const compressed = await compressImage(file, purpose);
@@ -242,9 +255,11 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     } catch {
       setCameraError('Lỗi khi nén ảnh tải lên.');
     } finally {
+      captureInProgressRef.current = false;
+      captureLockRef.current = false;
       setIsProcessing(false);
       // Reset input value to allow re-selection
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      input.value = '';
     }
   };
 
@@ -313,6 +328,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                         variant="secondary"
                         size="md"
                         onClick={() => fileInputRef.current?.click()}
+                        disabled={isProcessing || isLoading || countdown !== null || captureLockRef.current}
                         className="bg-white/10 text-white hover:bg-white/20 border border-white/20 min-h-[44px]"
                       >
                         <UploadCloud className="w-4 h-4 mr-1.5" />
@@ -381,6 +397,15 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                 className="absolute inset-x-0 bottom-0 p-4 pt-12 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent"
                 style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
               >
+                {isCameraActive && cameraError && (
+                  <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl border border-red-300/40 bg-red-950/90 p-3 text-sm text-red-100">
+                    <AlertCircle className="h-5 w-5 shrink-0" />
+                    <p className="flex-1">{cameraError}</p>
+                    <button type="button" onClick={() => setCameraError(null)} aria-label="Đóng thông báo lỗi" className="touch-target flex items-center justify-center rounded-lg hover:bg-white/10">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
                 <p role="status" className="mb-2 min-h-5 text-center text-sm font-semibold text-emerald-300">
                   {isCaptureSaved ? 'Đã lưu ảnh' : ''}
                 </p>
@@ -404,7 +429,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isProcessing || isLoading}
+                  disabled={isProcessing || isLoading || countdown !== null || captureLockRef.current}
                   className="w-full py-3 text-xs text-slate-200 hover:text-white disabled:text-slate-500 flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <UploadCloud className="w-4 h-4" />
@@ -428,7 +453,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                 <Button type="button" size="md" onClick={() => setIsViewfinderOpen(true)}>
                   Mở Camera
                 </Button>
-                <Button type="button" size="md" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                <Button type="button" size="md" variant="outline" disabled={isProcessing || isLoading || countdown !== null || captureLockRef.current} onClick={() => fileInputRef.current?.click()}>
                   Chọn Ảnh
                 </Button>
               </div>

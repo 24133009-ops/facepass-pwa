@@ -37,7 +37,6 @@ export default {
         'shimmer': 'shimmer 1.5s infinite linear',
         'gradient-shift': 'gradientShift 8s ease infinite',
         'glow-pulse': 'glowPulse 2s ease-in-out infinite',
-        'count-up': 'countUp 0.6s ease-out forwards',
         'scan-line': 'scanLine 2s ease-in-out infinite',
       },
       keyframes: {

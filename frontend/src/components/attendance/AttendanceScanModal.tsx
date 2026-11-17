@@ -37,7 +37,7 @@ export const AttendanceScanModal: React.FC<AttendanceScanModalProps> = ({
       setError('Đã chụp tối đa 4 ảnh góc chụp cho buổi học này.');
       return;
     }
-    setCapturedPhotos((prev) => [...prev, result]);
+    setCapturedPhotos((prev) => prev.length >= 4 ? prev : [...prev, result]);
   };
 
   const handleRemovePhoto = (idx: number) => {
@@ -88,7 +88,7 @@ export const AttendanceScanModal: React.FC<AttendanceScanModalProps> = ({
   const captureProgress = (capturedPhotos.length / 4) * 100;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Điểm Danh Khuôn Mặt Cả Lớp">
+    <Modal isOpen={isOpen} onClose={handleClose} closeOnBackdrop={false} title="Điểm Danh Khuôn Mặt Cả Lớp">
       <div className="space-y-4">
         {/* Instruction Banner */}
         <div className="p-3.5 bg-blue-50 rounded-2xl border border-blue-200 space-y-1">
