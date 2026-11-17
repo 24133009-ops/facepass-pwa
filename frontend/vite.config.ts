@@ -9,20 +9,32 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'FacePass PWA - Điểm danh khuôn mặt',
         short_name: 'FacePass',
         description: 'Hệ thống điểm danh lớp học bằng nhận diện khuôn mặt AWS Serverless',
         theme_color: '#2563eb',
-        background_color: '#f8fafc',
+        background_color: '#2563eb',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
         icons: [
           {
+            src: 'icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
+          {
+            src: 'icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
+          {
             src: 'favicon.svg',
-            sizes: '192x192 512x512',
+            sizes: 'any',
             type: 'image/svg+xml',
             purpose: 'any maskable'
           }

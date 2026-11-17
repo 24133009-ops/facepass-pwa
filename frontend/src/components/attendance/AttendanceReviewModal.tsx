@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useReducedMotion } from 'framer-motion';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -6,13 +7,75 @@ import {
   HelpCircle,
   Send,
   Mail,
-  Users
+  Users,
+  GripVertical
 } from 'lucide-react';
 import { ScanResult, AttendanceRecord } from '../../types';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
+
+interface AnimatedCountProps {
+  value: number;
+}
+
+const AnimatedCount: React.FC<AnimatedCountProps> = ({ value }) => {
+  const shouldReduceMotion = useReducedMotion();
+  const [displayValue, setDisplayValue] = useState<number>(shouldReduceMotion ? value : 0);
+
+  React.useEffect(() => {
+    if (shouldReduceMotion) {
+      setDisplayValue(value);
+      return undefined;
+    }
+
+    const duration = 320;
+    const startedAt = performance.now();
+    let frameId = 0;
+
+    const updateValue = (now: number) => {
+      const progress = Math.min((now - startedAt) / duration, 1);
+      setDisplayValue(Math.round(value * progress));
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(updateValue);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(updateValue);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [shouldReduceMotion, value]);
+
+  return <>{displayValue}</>;
+};
+
+interface ConfidenceBarProps {
+  similarity: number;
+}
+
+const ConfidenceBar: React.FC<ConfidenceBarProps> = ({ similarity }) => {
+  const boundedSimilarity = Math.min(Math.max(similarity, 0), 100);
+  const tone =
+    boundedSimilarity >= 80
+      ? 'from-emerald-500 to-teal-400'
+      : boundedSimilarity >= 60
+        ? 'from-amber-400 to-orange-500'
+        : 'from-rose-500 to-red-600';
+
+  return (
+    <div className="flex items-center gap-2" aria-label={`Độ tương đồng ${boundedSimilarity}%`}>
+      <div className="h-1.5 flex-1 rounded-full bg-slate-200 overflow-hidden">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${tone} transition-[width] duration-300`}
+          style={{ width: `${boundedSimilarity}%` }}
+        />
+      </div>
+      <span className="w-9 text-right font-mono text-[11px] font-bold text-slate-700">
+        {boundedSimilarity}%
+      </span>
+    </div>
+  );
+};
 
 interface AttendanceReviewModalProps {
   isOpen: boolean;
@@ -129,7 +192,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="Đối Soát Kết Quả Nhận Diện AI">
+      <Modal isOpen={isOpen} onClose={onClose} closeOnBackdrop={false} title="Đối Soát Kết Quả Nhận Diện AI">
         <div className="space-y-4">
           {/* Top Session Metric Card */}
           <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
@@ -173,7 +236,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>Cần duyệt</span>
               </div>
-              <span className="text-[11px] font-mono">({uncertainList.length})</span>
+              <span className="text-[11px] font-mono">(<AnimatedCount value={uncertainList.length} />)</span>
             </button>
 
             <button
@@ -189,7 +252,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Có mặt</span>
               </div>
-              <span className="text-[11px] font-mono">({presentList.length})</span>
+              <span className="text-[11px] font-mono">(<AnimatedCount value={presentList.length} />)</span>
             </button>
 
             <button
@@ -205,7 +268,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                 <XCircle className="w-3.5 h-3.5" />
                 <span>Vắng mặt</span>
               </div>
-              <span className="text-[11px] font-mono">({absentList.length})</span>
+              <span className="text-[11px] font-mono">(<AnimatedCount value={absentList.length} />)</span>
             </button>
           </div>
 
@@ -221,13 +284,15 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                     <p>Không còn sinh viên nào ở nhóm cần xác nhận.</p>
                   </div>
                 ) : (
-                  uncertainList.map((record) => (
+                  uncertainList.map((record, index) => (
                     <div
                       key={record.studentId}
-                      className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 shadow-2xs"
+                      className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 shadow-2xs animate-slide-up"
+                      style={{ animationDelay: `${index * 60}ms` }}
                     >
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          <GripVertical className="w-4 h-4 text-amber-400 opacity-60 shrink-0" aria-hidden="true" />
                           <span className="font-mono text-xs font-bold text-amber-800">
                             {record.studentId}
                           </span>
@@ -235,9 +300,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                             {record.fullName}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-amber-700">
-                          <span>Độ tương đồng: <strong>{record.similarity}%</strong></span>
-                        </div>
+                        <ConfidenceBar similarity={record.similarity} />
                       </div>
 
                       {/* One-Touch Action Buttons */}
@@ -276,13 +339,15 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                     Chưa có sinh viên nào trong nhóm Có mặt.
                   </div>
                 ) : (
-                  presentList.map((record) => (
+                  presentList.map((record, index) => (
                     <div
                       key={record.studentId}
-                      className="p-3 bg-white border border-slate-200 rounded-2xl flex items-center justify-between gap-3 shadow-2xs hover:border-emerald-300"
+                      className="p-3 bg-white border border-slate-200 rounded-2xl flex items-center justify-between gap-3 shadow-2xs hover:border-emerald-300 animate-slide-up"
+                      style={{ animationDelay: `${index * 60}ms` }}
                     >
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-center gap-1.5">
+                          <GripVertical className="w-4 h-4 text-slate-300 opacity-60 shrink-0" aria-hidden="true" />
                           <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
                             {record.studentId}
                           </span>
@@ -290,9 +355,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                             {record.fullName}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          Khớp: {record.similarity}%
-                        </div>
+                        <ConfidenceBar similarity={record.similarity} />
                       </div>
 
                       {/* One-touch toggle to absent */}
@@ -319,13 +382,15 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                     Lớp đi học đầy đủ 100%!
                   </div>
                 ) : (
-                  absentList.map((record) => (
+                  absentList.map((record, index) => (
                     <div
                       key={record.studentId}
-                      className="p-3 bg-red-50/40 border border-red-200/80 rounded-2xl flex items-center justify-between gap-3 shadow-2xs"
+                      className="p-3 bg-red-50/40 border border-red-200/80 rounded-2xl flex items-center justify-between gap-3 shadow-2xs animate-slide-up"
+                      style={{ animationDelay: `${index * 60}ms` }}
                     >
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-center gap-1.5">
+                          <GripVertical className="w-4 h-4 text-rose-300 opacity-60 shrink-0" aria-hidden="true" />
                           <span className="font-mono text-xs font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">
                             {record.studentId}
                           </span>
@@ -333,9 +398,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
                             {record.fullName}
                           </span>
                         </div>
-                        <div className="text-[11px] text-red-600 mt-0.5">
-                          Ghi nhận vắng mặt
-                        </div>
+                        <ConfidenceBar similarity={record.similarity} />
                       </div>
 
                       {/* One-touch toggle to present */}
@@ -396,6 +459,7 @@ export const AttendanceReviewModal: React.FC<AttendanceReviewModalProps> = ({
       {/* Confirmation Dialog before Absence Email Dispatch */}
       <Modal
         isOpen={isConfirmDialogOpen}
+        closeOnBackdrop={false}
         onClose={() => setIsConfirmDialogOpen(false)}
         title="Xác Nhận Chốt Buổi Học & Gửi Email Cảnh Báo"
       >

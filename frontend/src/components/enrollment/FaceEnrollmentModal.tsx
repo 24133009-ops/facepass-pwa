@@ -7,6 +7,7 @@ import { CompressedImageResult } from '../../utils/imageCompressor';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { CameraCapture } from '../camera/CameraCapture';
+import { ThumbnailImage } from '../common/ThumbnailImage';
 
 interface FaceEnrollmentModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const activeStep = successMessage ? 3 : consentAgreed ? 2 : 1;
 
   if (!isOpen || !student) return null;
 
@@ -40,7 +42,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       setError('Đã chụp đủ tối đa 3 ảnh mẫu cho sinh viên');
       return;
     }
-    setCapturedPhotos((prev) => [...prev, result]);
+    setCapturedPhotos((prev) => prev.length >= 3 ? prev : [...prev, result]);
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -110,7 +112,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Đăng Ký Khuôn Mặt Sinh Viên">
+    <Modal isOpen={isOpen} onClose={handleClose} closeOnBackdrop={false} title="Đăng Ký Khuôn Mặt Sinh Viên">
       <div className="space-y-4">
         {/* Student Target Banner */}
         <div className="p-3 bg-blue-50 rounded-2xl border border-blue-200 flex items-center justify-between">
@@ -125,10 +127,46 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           </span>
         </div>
 
+        {/* Enrollment Progress: consent, capture, completion */}
+        <div className="relative grid grid-cols-3 gap-1" aria-label={`Bước ${activeStep} trên 3 của đăng ký khuôn mặt`}>
+          <div className="absolute left-[16%] right-[16%] top-4 h-0.5 bg-slate-200" aria-hidden="true" />
+          <div
+            className={`absolute left-[16%] top-4 h-0.5 bg-gradient-to-r from-blue-600 to-emerald-500 transition-all duration-300 ${
+              activeStep === 1 ? 'w-0' : activeStep === 2 ? 'w-[34%]' : 'w-[68%]'
+            }`}
+            aria-hidden="true"
+          />
+          {[
+            { step: 1, label: 'Đồng ý' },
+            { step: 2, label: 'Chụp ảnh' },
+            { step: 3, label: 'Hoàn tất' }
+          ].map(({ step, label }) => {
+            const isComplete = activeStep > step;
+            const isActive = activeStep === step;
+
+            return (
+              <div key={step} className="relative z-10 flex flex-col items-center gap-1 text-center">
+                <span
+                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-black transition-colors ${
+                    isComplete || isActive
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-200 bg-white text-slate-400'
+                  }`}
+                >
+                  {isComplete ? <CheckCircle2 className="w-4 h-4" /> : step}
+                </span>
+                <span className={`text-[10px] font-semibold ${isActive ? 'text-blue-700' : 'text-slate-500'}`}>
+                  {label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
         {/* Success Alert */}
         {successMessage && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl text-xs flex items-start gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 animate-scale-in motion-reduce:animate-none" />
             <p className="font-semibold leading-relaxed">{successMessage}</p>
           </div>
         )}
@@ -180,7 +218,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                   key={idx}
                   className="relative aspect-[4/5] bg-slate-100 rounded-xl overflow-hidden border border-slate-300 shadow-xs group"
                 >
-                  <img
+                  <ThumbnailImage
                     src={photo.dataUrl}
                     alt={`Ảnh ${idx + 1}`}
                     className="w-full h-full object-cover"
@@ -203,7 +241,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         )}
 
         {/* Camera Capture Module */}
-        {capturedPhotos.length < 3 ? (
+        {!successMessage && capturedPhotos.length < 3 ? (
           <div className="space-y-2">
             {!consentAgreed && (
               <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2">
@@ -212,17 +250,19 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               </div>
             )}
 
-            <div className={consentAgreed ? '' : 'opacity-40 pointer-events-none'}>
+            {consentAgreed && (
               <CameraCapture
                 initialFacingMode="user"
                 guideType="portrait"
                 purpose="enrollment"
                 onCapture={handleCapturePhoto}
                 isLoading={isSubmitting}
+                capturedCount={capturedPhotos.length}
+                maxCaptures={3}
               />
-            </div>
+            )}
           </div>
-        ) : (
+        ) : !successMessage && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-center text-xs space-y-1">
             <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
             <p className="font-bold text-emerald-950">Đã chụp đủ 3 ảnh góc chụp khác nhau!</p>

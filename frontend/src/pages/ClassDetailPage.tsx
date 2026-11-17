@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   UserPlus,
   FileSpreadsheet,
@@ -20,13 +21,27 @@ import { apiService } from '../services/api';
 import { downloadCsvFile, generateAttendanceCsv } from '../utils/csvHelper';
 import { Header } from '../components/common/Header';
 import { StudentItemCard } from '../components/students/StudentItem';
-import { AddStudentModal } from '../components/students/AddStudentModal';
-import { ImportCsvModal } from '../components/students/ImportCsvModal';
-import { FaceEnrollmentModal } from '../components/enrollment/FaceEnrollmentModal';
-import { AttendanceScanModal } from '../components/attendance/AttendanceScanModal';
-import { AttendanceReviewModal } from '../components/attendance/AttendanceReviewModal';
-import { AttendanceSessionDetailModal } from '../components/attendance/AttendanceSessionDetailModal';
 import { Button } from '../components/common/Button';
+import { lazyModal } from '../components/common/ErrorBoundary';
+
+const AddStudentModal = lazyModal<React.ComponentProps<typeof import('../components/students/AddStudentModal').AddStudentModal>>(() =>
+  import('../components/students/AddStudentModal').then(m => ({ default: m.AddStudentModal }))
+);
+const ImportCsvModal = lazyModal<React.ComponentProps<typeof import('../components/students/ImportCsvModal').ImportCsvModal>>(() =>
+  import('../components/students/ImportCsvModal').then(m => ({ default: m.ImportCsvModal }))
+);
+const FaceEnrollmentModal = lazyModal<React.ComponentProps<typeof import('../components/enrollment/FaceEnrollmentModal').FaceEnrollmentModal>>(() =>
+  import('../components/enrollment/FaceEnrollmentModal').then(m => ({ default: m.FaceEnrollmentModal }))
+);
+const AttendanceScanModal = lazyModal<React.ComponentProps<typeof import('../components/attendance/AttendanceScanModal').AttendanceScanModal>>(() =>
+  import('../components/attendance/AttendanceScanModal').then(m => ({ default: m.AttendanceScanModal }))
+);
+const AttendanceReviewModal = lazyModal<React.ComponentProps<typeof import('../components/attendance/AttendanceReviewModal').AttendanceReviewModal>>(() =>
+  import('../components/attendance/AttendanceReviewModal').then(m => ({ default: m.AttendanceReviewModal }))
+);
+const AttendanceSessionDetailModal = lazyModal<React.ComponentProps<typeof import('../components/attendance/AttendanceSessionDetailModal').AttendanceSessionDetailModal>>(() =>
+  import('../components/attendance/AttendanceSessionDetailModal').then(m => ({ default: m.AttendanceSessionDetailModal }))
+);
 
 interface ClassDetailPageProps {
   classItem: ClassItem;
@@ -35,6 +50,7 @@ interface ClassDetailPageProps {
 
 export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onBack }) => {
   const { token } = useAuth();
+  const shouldReduceMotion = useReducedMotion();
   const [activeTab, setActiveTab] = useState<'students' | 'history'>('students');
 
   // Students Data
@@ -198,87 +214,118 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Header title={classItem.name} showBack onBack={onBack} />
 
-      {/* Floating Success Toast */}
-      {successToast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4 animate-in fade-in slide-in-from-top duration-300">
-          <div className="bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold">
-            <CheckCircle2 className="w-5 h-5 shrink-0" />
-            <span>{successToast}</span>
-          </div>
-        </div>
-      )}
+      {/* Floating Success Toast with Framer-motion & Auto-dismiss Progress Bar */}
+      <AnimatePresence>
+        {successToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -24, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.95 }}
+            transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.25, ease: 'easeOut' }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-sm w-full px-4 pointer-events-none"
+          >
+            <div className="relative overflow-hidden bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold">
+              <CheckCircle2 className="w-5 h-5 shrink-0" />
+              <span className="flex-1">{successToast}</span>
+              <motion.div
+                initial={{ width: '100%' }}
+                animate={{ width: '0%' }}
+                transition={shouldReduceMotion ? { duration: 0 } : { duration: 3.5, ease: 'linear' }}
+                className="absolute bottom-0 left-0 h-1 bg-white/40"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <main className="flex-1 max-w-md w-full mx-auto p-4 space-y-4 pb-28">
-        {/* Class Overview Banner */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
-              Mã lớp: {classItem.classId}
-            </span>
-            <span className="text-xs text-slate-500 font-medium">
-              Collection: {classItem.collectionId}
-            </span>
-          </div>
+      <main id="page-content" tabIndex={-1} className="flex-1 max-w-md md:max-w-5xl w-full mx-auto p-4 space-y-4 pb-28 lg:pb-8">
+        {/* Class Overview Hero Banner with Gradient & Metrics */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-blue-800 via-blue-700 to-indigo-700 rounded-3xl p-5 border border-blue-500/50 shadow-card">
+          <div
+            className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-white/10 blur-2xl"
+            aria-hidden="true"
+          />
+          <div
+            className="absolute -left-14 bottom-0 w-32 h-32 rounded-full bg-indigo-300/20 blur-2xl"
+            aria-hidden="true"
+          />
+
+          <div className="relative z-10 space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-mono font-bold px-2.5 py-1 bg-white/15 text-white rounded-xl border border-white/20">
+                Mã lớp: {classItem.classId}
+              </span>
+              <span className="text-xs text-blue-100 font-medium">
+                Collection: {classItem.collectionId}
+              </span>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.16em] text-blue-100 uppercase">
+                Không gian lớp học
+              </p>
+              <h1 className="mt-1 text-xl font-black tracking-tight text-white">{classItem.name}</h1>
+            </div>
 
           {/* Quick Metrics */}
           <div className="grid grid-cols-3 gap-2 pt-1 text-center">
-            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-2xl border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-center gap-1 text-slate-500 text-xs mb-1">
-                <Users className="w-3.5 h-3.5" />
+                <Users className="w-3.5 h-3.5 text-blue-600" />
                 <span>Sĩ số</span>
               </div>
-              <div className="text-xl font-extrabold text-slate-900">{students.length}</div>
+              <div className="text-xl font-black text-slate-900">{students.length}</div>
             </div>
 
-            <div className="bg-emerald-50/80 p-3 rounded-2xl border border-emerald-200">
+            <div className="bg-emerald-50/90 backdrop-blur-xs p-3 rounded-2xl border border-emerald-200/80 shadow-sm">
               <div className="flex items-center justify-center gap-1 text-emerald-700 text-xs mb-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Đã nạp mặt</span>
               </div>
-              <div className="text-xl font-extrabold text-emerald-700">{enrolledCount}</div>
+              <div className="text-xl font-black text-emerald-700">{enrolledCount}</div>
             </div>
 
-            <div className="bg-amber-50/80 p-3 rounded-2xl border border-amber-200">
+            <div className="bg-amber-50/90 backdrop-blur-xs p-3 rounded-2xl border border-amber-200/80 shadow-sm">
               <div className="flex items-center justify-center gap-1 text-amber-700 text-xs mb-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                 <span>Chưa có mặt</span>
               </div>
-              <div className="text-xl font-extrabold text-amber-700">{missingFaceCount}</div>
+              <div className="text-xl font-black text-amber-700">{missingFaceCount}</div>
             </div>
           </div>
 
-          {/* Interactive Action Cards: Task 9 & Task 10 */}
+          {/* Interactive Action Cards */}
           <div className="grid grid-cols-2 gap-2.5 pt-1">
-            {/* Task 10 Trigger */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 flex flex-col justify-between shadow-2xs">
+            {/* Điểm danh AI Trigger */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-blue-600/5 border border-blue-200/90 flex flex-col justify-between shadow-2xs">
               <div>
                 <div className="flex items-center gap-1.5 text-blue-900 text-xs font-bold mb-1">
                   <ScanFace className="w-4 h-4 text-blue-600" />
                   <span>Điểm Danh AI</span>
                 </div>
                 <p className="text-[11px] text-blue-700 leading-snug mb-3">
-                  Chụp 1 hoặc nhiều góc ảnh toàn cảnh lớp học, AI đối soát 3 nhóm & gửi mail cảnh báo.
+                  Chụp ảnh lớp học, AI đối soát 3 nhóm & gửi mail cảnh báo.
                 </p>
               </div>
               <Button
                 size="md"
-                variant="primary"
+                variant="gradient"
                 onClick={() => setIsScanModalOpen(true)}
-                className="text-xs min-h-[42px] py-2 font-bold shadow-xs"
+                className="text-xs min-h-[42px] py-2 font-bold shadow-xs active:scale-95"
               >
                 <span>Bắt Đầu Quét</span>
               </Button>
             </div>
 
-            {/* Task 9 Trigger */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50/70 border border-emerald-200 flex flex-col justify-between shadow-2xs">
+            {/* Đăng ký mặt Trigger */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/10 to-emerald-600/5 border border-emerald-200/90 flex flex-col justify-between shadow-2xs">
               <div>
                 <div className="flex items-center gap-1.5 text-emerald-900 text-xs font-bold mb-1">
                   <Camera className="w-4 h-4 text-emerald-600" />
                   <span>Đăng Ký Mặt</span>
                 </div>
                 <p className="text-[11px] text-emerald-700 leading-snug mb-3">
-                  Chụp 2-3 ảnh chân dung kèm cam kết đồng ý sinh trắc học.
+                  Chụp ảnh chân dung kèm cam kết đồng ý sinh trắc học.
                 </p>
               </div>
               <Button
@@ -296,25 +343,35 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                     setIsAddModalOpen(true);
                   }
                 }}
-                className="text-xs min-h-[42px] py-2 border-emerald-300 text-emerald-800 font-bold hover:bg-emerald-50"
+                className="text-xs min-h-[42px] py-2 border-emerald-300 text-emerald-800 font-bold hover:bg-emerald-50 active:scale-95"
               >
                 <span>Chụp Chân Dung</span>
               </Button>
             </div>
           </div>
+          </div>
         </div>
 
-        {/* Tab Navigation: Sinh viên vs Lịch sử điểm danh (Task 11) */}
-        <div className="grid grid-cols-2 gap-2 bg-slate-200/80 p-1 rounded-2xl">
+        {/* Tab Navigation with Animated Framer-Motion Indicator */}
+        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 border border-slate-200/90 shadow-sm relative">
           <button
             type="button"
             onClick={() => setActiveTab('students')}
-            className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'students'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+            className={`relative py-2.5 px-3 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${
+              activeTab === 'students' ? 'text-blue-700' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
+            {activeTab === 'students' && (
+              <motion.div
+                layoutId="classDetailTabIndicator"
+                transition={
+                  shouldReduceMotion
+                    ? { duration: 0 }
+                    : { type: 'spring', stiffness: 500, damping: 35 }
+                }
+                className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600"
+              />
+            )}
             <Users className="w-4 h-4" />
             <span>Sinh Viên ({students.length})</span>
           </button>
@@ -322,12 +379,21 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
           <button
             type="button"
             onClick={() => setActiveTab('history')}
-            className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'history'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+            className={`relative py-2.5 px-3 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${
+              activeTab === 'history' ? 'text-blue-700' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
+            {activeTab === 'history' && (
+              <motion.div
+                layoutId="classDetailTabIndicator"
+                transition={
+                  shouldReduceMotion
+                    ? { duration: 0 }
+                    : { type: 'spring', stiffness: 500, damping: 35 }
+                }
+                className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600"
+              />
+            )}
             <History className="w-4 h-4" />
             <span>Lịch Sử ({sessions.length})</span>
           </button>
@@ -385,9 +451,26 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
 
             {/* Student List */}
             {isLoadingStudents ? (
-              <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-3">
-                <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
-                <p className="text-sm font-medium">Đang tải danh sách sinh viên...</p>
+              <div className="space-y-2.5">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="p-3.5 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-11 h-11 skeleton rounded-2xl shrink-0" />
+                      <div className="space-y-2 flex-1 min-w-0">
+                        <div className="flex gap-2">
+                          <div className="w-16 h-4 skeleton rounded-md" />
+                          <div className="w-28 h-4 skeleton rounded-md" />
+                        </div>
+                        <div className="w-36 h-3 skeleton rounded-md" />
+                        <div className="w-24 h-4 skeleton rounded-full" />
+                      </div>
+                    </div>
+                    <div className="w-8 h-8 skeleton rounded-xl shrink-0" />
+                  </div>
+                ))}
               </div>
             ) : filteredStudents.length === 0 ? (
               <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-xs">
@@ -444,9 +527,25 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
             </div>
 
             {isLoadingSessions ? (
-              <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-3">
-                <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
-                <p className="text-sm font-medium">Đang tải lịch sử buổi học...</p>
+              <div className="space-y-3 pl-6 relative before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="relative p-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm space-y-3"
+                  >
+                    <div className="absolute -left-[29px] top-4 w-4 h-4 rounded-full skeleton ring-4 ring-white" />
+                    <div className="flex justify-between items-center">
+                      <div className="w-32 h-4 skeleton rounded-md" />
+                      <div className="w-16 h-4 skeleton rounded-full" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="h-12 skeleton rounded-xl" />
+                      <div className="h-12 skeleton rounded-xl" />
+                      <div className="h-12 skeleton rounded-xl" />
+                    </div>
+                    <div className="h-10 skeleton rounded-xl" />
+                  </div>
+                ))}
               </div>
             ) : sessions.length === 0 ? (
               <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-xs">
@@ -462,7 +561,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                 </Button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-gradient-to-b before:from-blue-500 before:via-indigo-300 before:to-slate-200">
                 {sessions.map((sess) => {
                   const dateStr = new Date(sess.startedAt).toLocaleString('vi-VN', {
                     hour: '2-digit',
@@ -472,49 +571,92 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                     year: 'numeric'
                   });
 
+                  const presentPct =
+                    sess.totalStudents > 0
+                      ? Math.round((sess.presentCount / sess.totalStudents) * 100)
+                      : 0;
+                  const isConfirmed = sess.status === 'confirmed';
+
                   return (
                     <div
                       key={sess.sessionId}
-                      className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3 hover:border-blue-300 transition-colors"
+                      className="relative group p-4 bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 hover:shadow-card transition-all duration-200 space-y-3"
                     >
+                      {/* Timeline node */}
+                      <div className="absolute -left-[29px] top-4 w-4 h-4 rounded-full bg-blue-600 ring-4 ring-white shadow-sm group-hover:scale-110 transition-transform" />
+
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200/80">
                             #{sess.sessionId}
                           </span>
-                          <span className="text-xs text-slate-600 font-medium">
-                            {dateStr}
-                          </span>
+                          <div className="flex items-center gap-1 text-xs text-slate-500 font-medium">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{dateStr}</span>
+                          </div>
                         </div>
 
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          Đã chốt
+                        <span
+                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                            isConfirmed
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200/80'
+                          }`}
+                        >
+                          {isConfirmed ? 'Đã chốt' : 'Bản nháp'}
                         </span>
                       </div>
 
-                      {/* Counts */}
-                      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                        <div className="p-2 bg-slate-50 rounded-xl">
-                          <span className="text-slate-500 text-[11px]">Sĩ số</span>
-                          <p className="font-bold text-slate-800 text-sm">{sess.totalStudents}</p>
+                      {/* Donut Chart & Counts */}
+                      <div className="flex items-center gap-3 p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                        {/* Mini Donut Chart */}
+                        <div className="relative w-12 h-12 shrink-0 flex items-center justify-center">
+                          <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
+                            <path
+                              className="text-slate-200"
+                              stroke="currentColor"
+                              strokeWidth="3.5"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path
+                              className="text-emerald-500 transition-all duration-500"
+                              stroke="currentColor"
+                              strokeWidth="3.5"
+                              strokeDasharray={`${presentPct}, 100`}
+                              strokeLinecap="round"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                          </svg>
+                          <div className="absolute text-[10px] font-black text-slate-800">
+                            {presentPct}%
+                          </div>
                         </div>
-                        <div className="p-2 bg-emerald-50/70 rounded-xl">
-                          <span className="text-emerald-700 text-[11px]">Có mặt</span>
-                          <p className="font-bold text-emerald-800 text-sm">{sess.presentCount}</p>
-                        </div>
-                        <div className="p-2 bg-red-50/70 rounded-xl">
-                          <span className="text-red-700 text-[11px]">Vắng</span>
-                          <p className="font-bold text-red-800 text-sm">{sess.absentCount}</p>
+
+                        <div className="grid grid-cols-3 gap-2 flex-1 text-center text-xs">
+                          <div className="p-1.5 bg-white rounded-lg border border-slate-200/70">
+                            <span className="text-slate-500 text-[10px]">Sĩ số</span>
+                            <p className="font-extrabold text-slate-800 text-sm">{sess.totalStudents}</p>
+                          </div>
+                          <div className="p-1.5 bg-emerald-50/70 rounded-lg border border-emerald-200/70">
+                            <span className="text-emerald-700 text-[10px]">Có mặt</span>
+                            <p className="font-extrabold text-emerald-800 text-sm">{sess.presentCount}</p>
+                          </div>
+                          <div className="p-1.5 bg-rose-50/70 rounded-lg border border-rose-200/70">
+                            <span className="text-rose-700 text-[10px]">Vắng</span>
+                            <p className="font-extrabold text-rose-800 text-sm">{sess.absentCount}</p>
+                          </div>
                         </div>
                       </div>
 
                       {/* Action buttons: Download CSV & View Details */}
-                      <div className="pt-1 flex items-center gap-2">
+                      <div className="pt-0.5 flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => handleExportSessionCsv(sess)}
                           title="Tải báo cáo CSV có UTF-8 BOM và chống CSV injection"
-                          className="flex-1 min-h-[44px] py-2 px-3 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-300 flex items-center justify-center gap-1.5 transition-colors touch-target"
+                          className="flex-1 min-h-[42px] py-2 px-3 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-300 flex items-center justify-center gap-1.5 transition-colors touch-target shadow-sm"
                         >
                           <Download className="w-4 h-4 text-emerald-700" />
                           <span>Xuất CSV (BOM UTF-8)</span>
@@ -526,7 +668,7 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
                             setSelectedSessionDetail(sess);
                             setIsDetailModalOpen(true);
                           }}
-                          className="min-h-[44px] px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors touch-target flex items-center gap-1"
+                          className="min-h-[42px] px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors touch-target flex items-center gap-1 shadow-sm"
                         >
                           <span>Chi tiết</span>
                           <ChevronRight className="w-4 h-4" />
@@ -542,54 +684,78 @@ export const ClassDetailPage: React.FC<ClassDetailPageProps> = ({ classItem, onB
       </main>
 
       {/* Modals for Task 8, 9, 10, 11 */}
-      <AddStudentModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAdd={handleAddStudent}
-        isLoading={isActionLoading}
-      />
+      <Suspense fallback={null}>
+        {isAddModalOpen && (
+          <AddStudentModal
+            isOpen={isAddModalOpen}
+            onClose={() => setIsAddModalOpen(false)}
+            onAdd={handleAddStudent}
+            isLoading={isActionLoading}
+          />
+        )}
+      </Suspense>
 
-      <ImportCsvModal
-        isOpen={isCsvModalOpen}
-        onClose={() => setIsCsvModalOpen(false)}
-        onImport={handleImportCsv}
-        isLoading={isActionLoading}
-      />
+      <Suspense fallback={null}>
+        {isCsvModalOpen && (
+          <ImportCsvModal
+            isOpen={isCsvModalOpen}
+            onClose={() => setIsCsvModalOpen(false)}
+            onImport={handleImportCsv}
+            isLoading={isActionLoading}
+          />
+        )}
+      </Suspense>
 
       {/* Task 9: Biometric Face Enrollment Modal */}
-      <FaceEnrollmentModal
-        isOpen={isEnrollModalOpen}
-        onClose={() => setIsEnrollModalOpen(false)}
-        student={selectedEnrollStudent}
-        classId={classItem.classId}
-        onSuccess={handleEnrollSuccess}
-      />
+      <Suspense fallback={null}>
+        {isEnrollModalOpen && (
+          <FaceEnrollmentModal
+            isOpen={isEnrollModalOpen}
+            onClose={() => setIsEnrollModalOpen(false)}
+            student={selectedEnrollStudent}
+            classId={classItem.classId}
+            onSuccess={handleEnrollSuccess}
+          />
+        )}
+      </Suspense>
 
       {/* Task 10: Attendance Camera Scan Modal */}
-      <AttendanceScanModal
-        isOpen={isScanModalOpen}
-        onClose={() => setIsScanModalOpen(false)}
-        classId={classItem.classId}
-        className={classItem.name}
-        onScanComplete={handleScanComplete}
-      />
+      <Suspense fallback={null}>
+        {isScanModalOpen && (
+          <AttendanceScanModal
+            isOpen={isScanModalOpen}
+            onClose={() => setIsScanModalOpen(false)}
+            classId={classItem.classId}
+            className={classItem.name}
+            onScanComplete={handleScanComplete}
+          />
+        )}
+      </Suspense>
 
       {/* Task 10: Attendance 3-Group Review Modal */}
-      <AttendanceReviewModal
-        isOpen={isReviewModalOpen}
-        onClose={() => setIsReviewModalOpen(false)}
-        scanResult={scanResult}
-        classId={classItem.classId}
-        onConfirmed={handleAttendanceConfirmed}
-      />
+      <Suspense fallback={null}>
+        {isReviewModalOpen && (
+          <AttendanceReviewModal
+            isOpen={isReviewModalOpen}
+            onClose={() => setIsReviewModalOpen(false)}
+            scanResult={scanResult}
+            classId={classItem.classId}
+            onConfirmed={handleAttendanceConfirmed}
+          />
+        )}
+      </Suspense>
 
       {/* Task 11: Attendance Session Detail Modal */}
-      <AttendanceSessionDetailModal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        session={selectedSessionDetail}
-        onSessionUpdated={handleSessionUpdated}
-      />
+      <Suspense fallback={null}>
+        {isDetailModalOpen && (
+          <AttendanceSessionDetailModal
+            isOpen={isDetailModalOpen}
+            onClose={() => setIsDetailModalOpen(false)}
+            session={selectedSessionDetail}
+            onSessionUpdated={handleSessionUpdated}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };
