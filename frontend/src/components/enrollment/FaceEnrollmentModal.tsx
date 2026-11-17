@@ -165,7 +165,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         {/* Success Alert */}
         {successMessage && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl text-xs flex items-start gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 animate-scale-in" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 animate-scale-in motion-reduce:animate-none" />
             <p className="font-semibold leading-relaxed">{successMessage}</p>
           </div>
         )}
@@ -256,6 +256,8 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                 purpose="enrollment"
                 onCapture={handleCapturePhoto}
                 isLoading={isSubmitting}
+                capturedCount={capturedPhotos.length}
+                maxCaptures={3}
               />
             )}
           </div>

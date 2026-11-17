@@ -188,6 +188,8 @@ export const AttendanceScanModal: React.FC<AttendanceScanModalProps> = ({
             purpose="attendance"
             onCapture={handleCaptureClassPhoto}
             isLoading={isScanning}
+            capturedCount={capturedPhotos.length}
+            maxCaptures={4}
           />
         )}
 

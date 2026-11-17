@@ -10,6 +10,8 @@ interface CameraCaptureProps {
   purpose?: ImagePurpose;
   onCapture: (result: CompressedImageResult) => void;
   isLoading?: boolean;
+  capturedCount?: number;
+  maxCaptures?: number;
 }
 
 export const CameraCapture: React.FC<CameraCaptureProps> = ({
@@ -17,7 +19,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   guideType = 'portrait',
   purpose = 'enrollment',
   onCapture,
-  isLoading = false
+  isLoading = false,
+  capturedCount,
+  maxCaptures
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -25,6 +29,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   const cameraRequestIdRef = useRef<number>(0);
   const countdownTimerRef = useRef<number | null>(null);
   const flashTimerRef = useRef<number | null>(null);
+  const savedTimerRef = useRef<number | null>(null);
+  const isMountedRef = useRef<boolean>(true);
   const captureLockRef = useRef<boolean>(false);
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>(initialFacingMode);
@@ -34,6 +40,30 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   const [isViewfinderOpen, setIsViewfinderOpen] = useState<boolean>(true);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isFlashVisible, setIsFlashVisible] = useState<boolean>(false);
+  const [isCaptureSaved, setIsCaptureSaved] = useState<boolean>(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (savedTimerRef.current !== null) {
+        window.clearTimeout(savedTimerRef.current);
+        savedTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const showCaptureSaved = () => {
+    if (!isMountedRef.current) return;
+    if (savedTimerRef.current !== null) {
+      window.clearTimeout(savedTimerRef.current);
+    }
+    setIsCaptureSaved(true);
+    savedTimerRef.current = window.setTimeout(() => {
+      setIsCaptureSaved(false);
+      savedTimerRef.current = null;
+    }, 1500);
+  };
 
   const clearCountdown = useCallback(() => {
     if (countdownTimerRef.current !== null) {
@@ -96,6 +126,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        if (cameraRequestIdRef.current !== requestId) return;
         setIsCameraActive(true);
       } else {
         stream.getTracks().forEach((track) => track.stop());
@@ -161,7 +192,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
       // Compress client-side (enrollment: 1280px, attendance: 2560px, JPEG)
       const compressed = await compressImage(canvas, purpose);
-      onCapture(compressed);
+      await onCapture(compressed);
+      showCaptureSaved();
     } catch {
       setCameraError('Không thể chụp ảnh từ video frame. Vui lòng thử lại hoặc chọn ảnh dự phòng.');
     } finally {
@@ -205,7 +237,8 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     setIsProcessing(true);
     try {
       const compressed = await compressImage(file, purpose);
-      onCapture(compressed);
+      await onCapture(compressed);
+      showCaptureSaved();
     } catch {
       setCameraError('Lỗi khi nén ảnh tải lên.');
     } finally {
@@ -254,7 +287,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                       guideType === 'portrait' ? 'w-56 h-[min(70vh,22rem)] max-h-[72vw]' : 'w-full h-full max-w-2xl'
                     }`}
                   >
-                    <div className="absolute inset-x-4 h-px bg-gradient-to-r from-transparent via-cyan-200 to-transparent shadow-[0_0_16px_rgba(103,232,249,0.95)] animate-scan-line" />
+                    <div className="absolute inset-x-4 h-px bg-gradient-to-r from-transparent via-cyan-200 to-transparent shadow-[0_0_16px_rgba(103,232,249,0.95)] animate-scan-line motion-reduce:animate-none" />
                     <span className="absolute -top-1 -left-1 h-8 w-8 border-l-2 border-t-2 border-cyan-100 drop-shadow-[0_0_6px_rgba(103,232,249,0.9)]" />
                     <span className="absolute -top-1 -right-1 h-8 w-8 border-r-2 border-t-2 border-cyan-100 drop-shadow-[0_0_6px_rgba(103,232,249,0.9)]" />
                     <span className="absolute -bottom-1 -left-1 h-8 w-8 border-b-2 border-l-2 border-cyan-100 drop-shadow-[0_0_6px_rgba(103,232,249,0.9)]" />
@@ -288,19 +321,27 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-slate-400">
-                      <RefreshCw className="w-8 h-8 animate-spin text-blue-400" />
+                      <RefreshCw className="w-8 h-8 animate-spin motion-reduce:animate-none text-blue-400" />
                       <span className="text-xs">Đang khởi động camera...</span>
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4 bg-gradient-to-b from-slate-950/80 to-transparent">
+              <div
+                className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-4 bg-gradient-to-b from-slate-950/80 to-transparent"
+                style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))' }}
+              >
                 <div>
                   <p className="text-xs font-bold">{guideType === 'portrait' ? 'Đăng ký khuôn mặt' : 'Quét điểm danh'}</p>
                   <p className="text-[11px] text-slate-300">Giữ thiết bị ổn định để ảnh rõ nét</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {capturedCount !== undefined && maxCaptures !== undefined && (
+                    <span className="shrink-0 rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold tabular-nums whitespace-nowrap backdrop-blur-md">
+                      Đã chụp {capturedCount}/{maxCaptures}
+                    </span>
+                  )}
                   {isCameraActive && (
                     <button
                       type="button"
@@ -324,7 +365,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
               {countdown !== null && (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-950/25 pointer-events-none">
-                  <span className="w-24 h-24 rounded-full border-2 border-white/80 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center text-6xl font-black tabular-nums animate-scale-in">
+                  <span className="w-24 h-24 rounded-full border-2 border-white/80 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center text-6xl font-black tabular-nums animate-scale-in motion-reduce:animate-none">
                     {countdown}
                   </span>
                 </div>
@@ -336,7 +377,13 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
                 aria-hidden="true"
               />
 
-              <div className="absolute inset-x-0 bottom-0 p-4 pt-12 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent">
+              <div
+                className="absolute inset-x-0 bottom-0 p-4 pt-12 bg-gradient-to-t from-slate-950 via-slate-950/85 to-transparent"
+                style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+              >
+                <p role="status" className="mb-2 min-h-5 text-center text-sm font-semibold text-emerald-300">
+                  {isCaptureSaved ? 'Đã lưu ảnh' : ''}
+                </p>
                 {countdown !== null ? (
                   <Button type="button" onClick={clearCountdown} size="lg" variant="outline" className="border-white/30 bg-white/10 text-white hover:bg-white/20">
                     Hủy đếm ngược
@@ -369,6 +416,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
           )
         : (
             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-center space-y-3">
+              <p role="status" className="text-sm font-semibold text-emerald-700">
+                {isCaptureSaved ? 'Đã lưu ảnh' : ''}
+              </p>
               <Camera className="w-7 h-7 text-blue-600 mx-auto" />
               <div>
                 <p className="text-sm font-bold text-blue-950">Camera đang tạm dừng</p>
